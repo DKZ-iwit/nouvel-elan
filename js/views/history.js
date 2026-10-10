@@ -14,7 +14,7 @@ let filter = 'tout';
 export function renderHistory(root) {
   root.append(pageHeader('Historique', { actions: [btn('Ajouter', () => openAddMenu(), { small: true, iconName: 'plus', kind: 'primary' })] }));
   root.append(segmented({ tout: 'Tout', salle: 'Salle', dehors: 'Hors salle' }, filter, v => { filter = v || 'tout'; draw(); }, { label: 'Filtrer' }));
-  const list = h('div', {});
+  const list = h('div', { class: 'history-list' });
   root.append(list);
   function draw() {
     clear(list);
@@ -36,8 +36,7 @@ export function renderHistory(root) {
         const m = sessionMinutes(s);
         ul.append(h('li', {}, h('a', { class: 'list-link', href: `#/historique/s/${s.id}` },
           h('span', { class: 'dot dot-gym', 'aria-hidden': 'true' }),
-          h('span', { class: 'grow' }, h('span', { class: 'block-txt', text: s.suggestion?.title || 'Séance en salle' }), h('span', { class: 'fine', text: s.entries.map(e => e.name).slice(0, 4).join(', ') + (s.entries.length > 4 ? '…' : '') })),
-          h('span', { class: 'muted right', text: fmtDate(s.date, { weekday: true }) + (s.durationMin ? '\n' + fmtDuration(s.durationMin) : m.min ? '' : '') }))));
+          h('span', { class: 'grow' }, h('span', { class: 'block-txt', text: s.suggestion?.title || 'Séance en salle' }), h('span', { class: 'history-date', text: fmtDate(s.date, { weekday: true }) + (s.durationMin ? ' · ' + fmtDuration(s.durationMin) : '') }), h('span', { class: 'fine', text: s.entries.map(e => e.name).slice(0, 4).join(', ') + (s.entries.length > 4 ? '…' : '') })))));
       } else {
         const a = it.a;
         ul.append(h('li', {}, h('a', { class: 'list-link', href: `#/activite/${a.id}` },

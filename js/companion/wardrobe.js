@@ -87,7 +87,7 @@ I('f_legging_motif', 'Legging à motifs', 'feminin', 'bas', 7, 'Taille haute, mo
   },
   lower: (r, ctx) => [lowerTorso(r, ctx, '#5B3A5E', r.wy - 6), band(r, ctx, r.wy - 6, r.wy - 2, '#43284A')],
 });
-I('f_tapis_yoga', 'Tapis de yoga roulé', 'feminin', 'sol', 8, 'Tapis roulé, sangle de transport.', {
+I('f_tapis_yoga', 'Tapis de yoga roulé', 'neutre', 'sol', 8, 'Tapis roulé, sangle de transport.', {
   ground: () => [s('rect', { x: 10, y: G - 20, width: 40, height: 19, rx: 9.5, fill: '#5E7FA8' }), s('circle', { cx: 19.5, cy: G - 10.5, r: 9.5, fill: '#7D9CC4' }),
     s('path', { d: `M 19.5 ${G - 10.5} m -5 0 a 5 5 0 1 1 5 5 a 3 3 0 1 1 -3 -3`, stroke: '#4B6990', 'stroke-width': 1.3, fill: 'none' }), s('rect', { x: 34, y: G - 21, width: 3, height: 21, fill: '#2B2A28' })],
 });
@@ -161,7 +161,7 @@ I('m_bonnet', 'Bonnet côtelé', 'masculin', 'tete', 7, 'Bonnet à revers.', {
       s('rect', { x: -w - 1, y: yb - 9, width: (w + 1) * 2, height: 10, rx: 4, fill: '#A8861C' })];
   },
 });
-I('m_kettlebell', 'Kettlebell', 'masculin', 'sol', 8, 'Kettlebell décorative posée au sol.', {
+I('m_kettlebell', 'Kettlebell', 'neutre', 'sol', 8, 'Kettlebell décorative posée au sol.', {
   ground: () => [s('path', { d: `M 160 ${G - 22} q 0 -12 9 -12 q 9 0 9 12`, stroke: '#2B2A28', 'stroke-width': 4, fill: 'none' }),
     s('circle', { cx: 169, cy: G - 11, r: 12, fill: '#2B2A28' }), s('rect', { x: 163, y: G - 15, width: 12, height: 6, rx: 2, fill: '#C9A227' })],
 });

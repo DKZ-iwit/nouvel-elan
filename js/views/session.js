@@ -74,10 +74,10 @@ async function startFromSuggestion(sg, opts, attState) {
   }
   const entries = sg.items.map(it => {
     const ex = getEx(it.exerciseId);
-    const load = it.advice.load ?? null;
-    const repsPh = it.advice.reps ?? (it.advice.kind === 'increase' ? it.range[0] : Math.min(it.range[1], Math.max(it.range[0], lastRepsAt(ex.id, load) ?? it.range[0])));
+    const load = (it.advice.kind === 'increase' && it.advice.previousLoad !== undefined && !it.acceptIncrease ? it.advice.previousLoad : it.advice.load) ?? null;
+    const repsPh = it.advice.reps ?? (it.advice.kind === 'increase' && it.acceptIncrease ? it.range[0] : Math.min(it.range[1], Math.max(it.range[0], lastRepsAt(ex.id, load) ?? it.range[0])));
     return strengthEntry(ex, { n: it.sets, load, repsPh: ex.measure === 'time' ? null : repsPh, secondsPh: it.advice.seconds ?? null, variant: it.variant, equipmentNote: it.equipmentNote,
-      target: { range: it.range, rest: it.rest, advice: it.advice.text, basis: it.advice.basis, flags: it.flags, replacement: it.replacement, prio: it.prio, sets: it.sets, pattern: it.pattern } });
+      target: { range: it.range, rest: it.rest, advice: it.advice.kind === 'increase' && it.advice.previousLoad !== undefined && !it.acceptIncrease ? 'Charge précédente conservée à ton choix. ' + it.advice.text : it.advice.text, basis: it.advice.basis, flags: it.flags, replacement: it.replacement, prio: it.prio, sets: it.sets, pattern: it.pattern } });
   });
   if (sg.cardio) entries.push(cardioEntry(sg.cardio.cardioType, { minutesPh: sg.cardio.minutes, target: { advice: `${sg.cardio.minutes} min, intensité ${sg.cardio.intensity}. ${sg.cardio.detail}`, flags: sg.cardio.runOption ? [sg.cardio.runOption] : [] } }));
   await startDraft(newSessionObj({
@@ -198,6 +198,9 @@ export function renderPrepare(root) {
       h('ol', { class: 'plan' }, ...sg.items.map(it => h('li', { class: 'plan-item' },
         h('div', { class: 'row-between' }, h('strong', { text: it.name }), h('span', { class: 'tag', text: it.measure === 'time' ? `${it.sets} × ${it.targetSeconds ? it.targetSeconds + ' s' : 'durée libre'}` : `${it.sets} × ${it.range[0]}–${it.range[1]}` })),
         h('p', { class: 'fine', text: it.advice.load !== null && it.advice.load !== undefined ? `${fmtNum(it.advice.load, 2)} kg${it.loadType === 'assist' ? ' d’assistance' : ''}` : it.advice.kind === 'start' ? 'Charge à déterminer' : '' }),
+        it.advice.kind === 'increase' && it.advice.previousLoad !== undefined ? h('div', {},
+          h('p', { class: 'fine', text: 'Augmentation conseillée : ' + it.advice.text }),
+          h('label', { class: 'row fine' }, h('input', { type: 'checkbox', checked: false, onchange: e => { it.acceptIncrease = e.target.checked; } }), 'Accepter cette progression (sinon, conserver la charge précédente)')) : null,
         ...it.flags.map(f => h('p', { class: 'flag', text: f }))))),
       sg.cardio ? h('p', { class: 'fine', text: `Cardio : ${sg.cardio.label.toLowerCase()}, ${sg.cardio.minutes} min${sg.cardio.optional ? ' (facultatif)' : ''}.` }) : null,
       h('details', { class: 'more' }, h('summary', { text: 'Pourquoi cette séance' }), h('ul', { class: 'bullets fine' }, ...sg.reasons.map(r => h('li', { text: r }))),

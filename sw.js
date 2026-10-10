@@ -1,7 +1,7 @@
 // Service worker de Nouvel Élan.
 // À chaque publication, incrémenter CACHE_VERSION pour proposer la mise à jour.
 // Le cache ne contient que les fichiers de l'application : les données (IndexedDB) ne sont jamais touchées.
-const CACHE_VERSION = 'v2.0.0';
+const CACHE_VERSION = 'v2.0.1';
 const CACHE = 'nouvel-elan-' + CACHE_VERSION;
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './css/app.css',

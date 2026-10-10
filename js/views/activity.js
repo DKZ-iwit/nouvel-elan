@@ -30,7 +30,7 @@ export function renderActivity(root, id) {
   function refresh() {
     const r = activityCalories({ ...a, calories: cal.value ? cal : null }, S.data.measurements);
     const w = weightAt(S.data.measurements, a.date);
-    kcalOut.textContent = 'Calories d’activité : ' + kcalResultText(r) + (r.kind === 'estimation' ? ' ' + weightNote(w, a.date) : '');
+    kcalOut.textContent = (r.kind === 'saisie' ? 'Calories renseignées : ' : 'Calories estimées automatiquement : ') + kcalResultText(r) + (r.kind === 'estimation' ? ' ' + weightNote(w, a.date) : '');
     // Double comptage : un segment cardio de séance le même jour
     dupWarn.replaceChildren();
     const types = SESSION_CARDIO_MATCH[a.type] || [];
@@ -62,12 +62,16 @@ export function renderActivity(root, id) {
       h('p', { class: 'help', text: 'Légère : on parle facilement. Modérée : on parle en phrases courtes. Soutenue : parler devient difficile.' })),
     assistWrap,
     section('Calories',
+      kcalOut,
+      h('p', { class: 'help', text: 'L’estimation se calcule avec la durée, l’intensité et le dernier poids enregistré à cette date. Renseigne ces éléments pour voir le résultat.' }),
+      h('details', { class: 'more', open: cal.value !== null && cal.value !== undefined },
+      h('summary', { text: 'Utiliser les calories de ma montre (facultatif)' }),
       h('p', { class: 'fine', text: 'Si ta montre ou ton appareil indique une valeur, elle remplace l’estimation de l’application (les deux ne s’additionnent jamais).' }),
       h('div', { class: 'grid-3' },
         field('Valeur (kcal)', numInput(cal.value, { decimals: 0, oninput: v => { cal.value = v; refresh(); } })),
         field('Convention', selectInput(KCAL_CONVENTIONS, cal.convention, { oninput: v => { cal.convention = v; refresh(); } })),
         field('Source', selectInput(KCAL_SOURCES, cal.source, { oninput: v => { cal.source = v; } }))),
-      kcalOut),
+      )),
     field('Notes', textArea(a.notes, { rows: 2, oninput: v => { a.notes = v; } })),
     dupWarn,
     h('div', { class: 'form-actions' },

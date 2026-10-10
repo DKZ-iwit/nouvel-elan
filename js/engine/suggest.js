@@ -20,7 +20,10 @@ export function exerciseConcernsZone(ex, zone) {
 export function comparableEntries(sessions, key, beforeDate = null) {
   const out = [];
   const list = doneSessions(sessions).filter(s => !beforeDate || s.date < beforeDate).sort((a, b) => b.date.localeCompare(a.date));
-  for (const s of list) for (const e of s.entries || []) if (e.kind !== 'cardio' && exKey(e) === key) out.push({ session: s, entry: e });
+  for (const s of list) {
+    const e = (s.entries || []).find(e => e.kind !== 'cardio' && exKey(e) === key);
+    if (e) out.push({ session: s, entry: e });
+  }
   return out;
 }
 
@@ -68,7 +71,14 @@ export function loadAdvice(ex, key, sessions, range, profile, flags = {}) {
   if (!ws.length) return { kind: 'keep', load: null, text: 'Pas de série de travail enregistrée la dernière fois.', basis };
   const effortOk = le.effort ? ['facile', 'maitrise'].includes(le.effort) : (ls.feedback && ['facile', 'adaptee'].includes(ls.feedback.difficulty));
   const effortHard = le.effort ? ['difficile', 'maximal'].includes(le.effort) : (ls.feedback && ls.feedback.difficulty === 'difficile');
-  const noInc = flags.noIncrease;
+  const noInc = flags.noIncrease || !!ls.pain || !!le.pain;
+  const previous = hist.find((x, i) => i > 0 && x.session.id !== ls.id && x.session.date !== ls.date);
+  const clean = x => !x.session.pain && !x.entry.pain && x.entry.setsCountKnown !== false;
+  const mastered = x => x.entry.effort ? ['facile', 'maitrise'].includes(x.entry.effort) : ['facile', 'adaptee'].includes(x.session.difficulty || x.session.feedback?.difficulty);
+  const mainSets = e => workSets(e).filter(s => !s.type || s.type === 'work');
+  const prevSets = previous ? mainSets(previous.entry) : [];
+  const confirmed = previous && clean(previous) && clean(hist[0]) && mastered(previous) && mastered(hist[0]) && daysBetween(previous.session.date, ls.date) <= 30 && mainSets(le).length > 0 && prevSets.length === mainSets(le).length;
+  const confirmationText = 'Confirme cette réussite sur deux séances distinctes comparables, avec un effort maîtrisé et sans douleur, avant de progresser.';
   const main = ws.filter(s => !s.type || s.type === 'work');
   const marked = ws.filter(s => s.type === 'ramp' || s.type === 'drop');
   const rel = main.length ? main : ws;
@@ -80,13 +90,13 @@ export function loadAdvice(ex, key, sessions, range, profile, flags = {}) {
     const secs = rel.map(s => s.seconds).filter(v => v !== null && v !== undefined);
     if (!secs.length) return { kind: 'keep', seconds: null, text: 'Durée non renseignée la dernière fois.', basis };
     const minS = Math.min(...secs), best = Math.max(...secs);
-    if (!noInc && effortOk && !unknownCount && minS === best) return { kind: 'increase', seconds: best + (inc || 5), text: `Toutes les séries analysées (${analysed}) tenues avec un effort maîtrisé : viser ${best + (inc || 5)} s.`, basis };
-    return { kind: 'keep', seconds: best, text: noInc ? `Garder ${best} s : ${flags.noIncreaseReason}.` : `Viser ${best} s sur chaque série (analyse : ${analysed}).`, basis };
+    if (!noInc && effortOk && !unknownCount && minS === best && confirmed && prevSets.every(s => s.seconds === best)) return { kind: 'increase', seconds: best + (inc || 5), text: `Toutes les séries analysées (${analysed}) tenues avec un effort maîtrisé : viser ${best + (inc || 5)} s.`, basis };
+    return { kind: 'keep', seconds: best, text: noInc ? `Garder ${best} s : ${flags.noIncreaseReason || 'douleur déclarée'}.` : `Viser ${best} s sur chaque série. ${confirmationText}`, basis };
   }
   if (ex.measure === 'reps') {
     const reps = rel.map(s => s.reps || 0);
     const best = Math.max(...reps), low = Math.min(...reps);
-    if (!noInc && effortOk && low === best) return { kind: 'increase', reps: best + 1, text: `Toutes les séries à ${best} répétitions avec un effort maîtrisé : viser ${best + 1}.`, basis };
+    if (!noInc && effortOk && low === best && confirmed && prevSets.every(s => s.reps === best)) return { kind: 'increase', reps: best + 1, text: `Toutes les séries à ${best} répétitions avec un effort maîtrisé : viser ${best + 1}.`, basis };
     return { kind: 'keep', reps: best, text: noInc ? `Garder ${best} répétitions : ${flags.noIncreaseReason}.` : `Viser ${best} répétitions sur chaque série (analyse : ${analysed}).`, basis };
   }
 
@@ -115,13 +125,15 @@ export function loadAdvice(ex, key, sessions, range, profile, flags = {}) {
   }
   if (unknownCount) return { kind: 'keep', load: top, text: `Nombre de séries non précisé la dernière fois : impossible de vérifier toutes les séries, garder ${fmt(top)} kg${unit}.`, basis };
 
+  const previousSuccess = confirmed && uniform && prevSets.every(s => s.load === top && (s.reps || 0) >= rMax);
   const reachedAll = rel.every(s => (s.reps || 0) >= rMax);
   if (reachedAll) {
     const scope = uniform ? `Toutes les séries analysées (${analysed}) atteignent ${rMax} répétitions` : `Toutes les séries analysées, à charges différentes (${analysed}), atteignent ${rMax} répétitions`;
-    if (noInc) return { kind: 'keep', load: top, text: `${scope}, mais la charge est conservée : ${flags.noIncreaseReason}.${markedNote}`, basis };
+    if (noInc) return { kind: 'keep', load: top, text: `${scope}, mais la charge est conservée : ${flags.noIncreaseReason || 'douleur déclarée'}.${markedNote}`, basis };
     if (isAssist && top <= 0) return { kind: 'keep', load: 0, text: `${scope} sans assistance : vise davantage de répétitions ou passe à la traction libre.${markedNote}`, basis };
+    if (!previousSuccess) return { kind: 'keep', load: top, text: `${scope}. ${confirmationText}${markedNote}`, basis };
     const next = isAssist ? Math.max(0, top - inc) : top + inc;
-    if (effortOk) return { kind: 'increase', load: next, text: `${scope} avec un effort maîtrisé : ${isAssist ? `assistance réduite à ${fmt(next)} kg` : `+${fmt(inc)} kg, soit ${fmt(next)} kg`}${uniform ? '' : ' sur la série la plus difficile'}.${markedNote}`, basis };
+    if (effortOk) return { kind: 'increase', load: next, previousLoad: top, text: `Deux séances comparables réussies avec un effort maîtrisé : ${isAssist ? `assistance réduite à ${fmt(next)} kg` : `+${fmt(inc)} kg, soit ${fmt(next)} kg`}${uniform ? '' : ' sur la série la plus difficile'}.${markedNote}`, basis };
     if (effortHard) return { kind: 'keep', load: top, text: `${scope}, mais l’effort déclaré était difficile : garder ${fmt(top)} kg${unit} une séance de plus.${markedNote}`, basis };
     return { kind: 'keep', load: top, text: `${scope}. Effort non déclaré : si c’était maîtrisé, tu peux tenter ${fmt(next)} kg${unit} ; sinon garde ${fmt(top)} kg${unit}.${markedNote}`, basis, optional: next };
   }

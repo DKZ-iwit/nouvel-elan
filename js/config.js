@@ -6,7 +6,7 @@ export const APP = {
   name: 'Nouvel Élan',
   shortName: 'Nouvel Élan',
   slug: 'nouvel-elan',
-  version: '2.0.0',
+  version: '2.0.1',
   // Format des fichiers d'export. Incrémenter en cas de changement de structure
   // et ajouter la migration correspondante dans js/io.js.
   exportFormat: 2,

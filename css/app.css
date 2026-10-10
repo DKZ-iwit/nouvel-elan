@@ -104,7 +104,7 @@ body.kbd .view { padding-bottom: 28px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .dot-gym { background: var(--gym); }
 .dot-outdoor { background: var(--outdoor); }
-.week-title { font-size: .86rem; font-weight: 750; color: var(--ink-soft); margin: 6px 0 -6px 4px; }
+.week-title { font-size: .86rem; font-weight: 750; color: var(--ink-soft); margin: 24px 0 12px 4px; }
 .bullets { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; }
 .kvs { display: flex; flex-direction: column; }
 .kv { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--line); }
@@ -364,3 +364,6 @@ body.kbd .nav { display: none; }
 }
 
 .list-link > .right { flex: none; max-width: 38%; font-size: .82rem; white-space: pre-line; }
+
+.history-list .list-link { align-items: flex-start; }
+.history-list .history-date { display: block; margin: 3px 0 7px; font-size: .8rem; color: var(--ink-soft); }
