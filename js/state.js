@@ -4,6 +4,7 @@ import { LIBRARY, LIBRARY_BY_ID } from './data/exercises.js';
 import { buildProgram } from './engine/program.js';
 import { DEFAULT_SETTINGS } from './config.js';
 import { nowISO, uid } from './util.js';
+import { computeProgress, syncCompanion } from './engine/companion.js';
 
 export const S = {
   profiles: [],
@@ -11,6 +12,7 @@ export const S = {
   data: { sessions: [], activities: [], measurements: [], customExercises: [], templates: [] },
   settings: { ...DEFAULT_SETTINGS },
   lastExport: null,
+  lastReward: null,
 };
 
 const listeners = new Set();
@@ -32,6 +34,7 @@ export async function loadProfile(id) {
   if (!S.profile) return;
   for (const store of db.PROFILE_STORES) S.data[store] = await db.getByProfile(store, id);
   await db.setMeta('activeProfileId', id);
+  await companionSync({ silent: true });
   emit();
 }
 
@@ -125,7 +128,35 @@ export async function saveRecord(store, rec) {
 export async function deleteRecord(store, id) {
   await db.del(store, id);
   S.data[store] = S.data[store].filter(x => x.id !== id);
+  if (['sessions', 'activities', 'measurements'].includes(store)) await companionSync({ silent: true });
   emit();
+}
+
+// ---------- Compagnon ----------
+export function companionProgress(p = S.profile) {
+  return computeProgress(p, S.data);
+}
+
+// Recalcule les points du compagnon du profil actif. silent : sans célébration.
+export async function companionSync({ silent = false } = {}) {
+  const p = S.profile;
+  if (!p || !p.companion) return null;
+  const prog = computeProgress(p, S.data);
+  const res = syncCompanion(p.companion, prog, { silent });
+  if (JSON.stringify(res.comp) !== JSON.stringify(p.companion)) {
+    p.companion = res.comp;
+    await saveProfile(p, { rebuild: false });
+  }
+  return { ...res, prog };
+}
+
+// ---------- Écritures en attente (sauvegarde avant mise à jour) ----------
+const flushers = new Set();
+export function registerFlusher(fn) { flushers.add(fn); return () => flushers.delete(fn); }
+export async function flushAll() {
+  const results = await Promise.allSettled([...flushers].map(fn => Promise.resolve().then(fn)));
+  const failed = results.find(r => r.status === 'rejected');
+  if (failed) throw failed.reason;
 }
 
 export function draftSession() {

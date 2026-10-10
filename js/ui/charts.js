@@ -4,14 +4,16 @@ import { h, s, fmtNum, fmtShort, parseISO, isoDate } from '../util.js';
 
 const W = 340, PAD = { l: 38, r: 10, t: 12, b: 26 };
 
-function niceTicks(min, max, n = 4) {
+export function niceTicks(min, max, n = 4, integer = false) {
   if (min === max) { min -= 1; max += 1; }
   const span = max - min, step0 = span / n;
   const mag = Math.pow(10, Math.floor(Math.log10(step0)));
-  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(st => span / st <= n) || 10 * mag;
+  let step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(st => span / st <= n) || 10 * mag;
+  // Graduations entières pour les comptages : jamais deux graduations qui s'arrondissent à la même valeur
+  if (integer) step = Math.max(1, Math.ceil(step));
   const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
   const t = []; for (let v = lo; v <= hi + step / 2; v += step) t.push(+v.toFixed(6));
-  return t;
+  return integer ? [...new Set(t.map(Math.round))] : t;
 }
 
 function table(headers, rows) {
@@ -26,7 +28,7 @@ function legend(items) {
 }
 
 // series: [{ name, color, points: [{ x: 'AAAA-MM-JJ', y, approx, note }], dashed, marker }]
-export function lineChart({ series, height = 190, yFmt = (v) => fmtNum(v, 1), refLines = [], title, unit = '', yMinZero = false, caption }) {
+export function lineChart({ series, height = 180, yFmt = (v) => fmtNum(v, 1), refLines = [], title, unit = '', yMinZero = false, caption }) {
   const all = series.flatMap(sr => sr.points.filter(p => p.y !== null && p.y !== undefined));
   const wrap = h('figure', { class: 'chart' });
   if (title) wrap.append(h('figcaption', { class: 'chart-title', text: title }));
@@ -42,7 +44,7 @@ export function lineChart({ series, height = 190, yFmt = (v) => fmtNum(v, 1), re
   y0 = Math.min(y0, ticks[0]); y1 = Math.max(y1, ticks[ticks.length - 1]);
   const X = (t) => PAD.l + (t - x0) / (x1 - x0) * (W - PAD.l - PAD.r);
   const Y = (v) => PAD.t + (1 - (v - y0) / (y1 - y0)) * (height - PAD.t - PAD.b);
-  const readout = h('p', { class: 'chart-readout', 'aria-live': 'polite', text: caption || 'Touchez un point pour lire sa valeur.' });
+  const readout = h('p', { class: 'chart-readout', 'aria-live': 'polite', text: caption || '' });
   const svg = s('svg', { viewBox: `0 0 ${W} ${height}`, class: 'chart-svg', role: 'img', 'aria-label': (title || 'Graphique') + ' : ' + series.map(sr => sr.name).join(', ') });
   for (const t of ticks) {
     svg.append(s('line', { x1: PAD.l, x2: W - PAD.r, y1: Y(t), y2: Y(t), class: 'grid' }));
@@ -52,7 +54,8 @@ export function lineChart({ series, height = 190, yFmt = (v) => fmtNum(v, 1), re
   xt.forEach((t, i) => svg.append(s('text', { x: X(t), y: height - 8, class: 'axis', 'text-anchor': i === 0 ? 'start' : i === 2 ? 'end' : 'middle', text: fmtShort(isoDate(new Date(t))) })));
   for (const r of refLines) {
     svg.append(s('line', { x1: PAD.l, x2: W - PAD.r, y1: Y(r.y), y2: Y(r.y), class: 'ref', stroke: r.color || 'currentColor' }));
-    svg.append(s('text', { x: W - PAD.r - 2, y: Y(r.y) - 4, class: 'axis ref-label', 'text-anchor': 'end', text: r.label }));
+    const ly = Y(r.y) - 5 < PAD.t + 8 ? Y(r.y) + 12 : Y(r.y) - 5;
+    svg.append(s('text', { x: PAD.l + 4, y: ly, class: 'axis ref-label', 'text-anchor': 'start', fill: r.color || 'currentColor', text: r.label }));
   }
   series.forEach((sr) => {
     const pts = sr.points.filter(p => p.y !== null && p.y !== undefined).sort((a, b) => a.x.localeCompare(b.x));
@@ -68,28 +71,28 @@ export function lineChart({ series, height = 190, yFmt = (v) => fmtNum(v, 1), re
     }
   });
   wrap.append(svg, readout);
-  const legItems = series.map(sr => ({ label: sr.name, color: sr.color, style: sr.dashed ? 'dashed' : '' }));
+  const legItems = series.length > 1 ? series.map(sr => ({ label: sr.name, color: sr.color, style: sr.dashed ? 'dashed' : '' })) : [];
   if (all.some(p => p.approx)) legItems.push({ label: 'Point creux : valeur approximative ou estimée', color: 'var(--ink-soft)', style: 'hollow' });
   for (const r of refLines) legItems.push({ label: r.label, color: r.color || 'var(--ink-soft)', style: 'ref' });
-  wrap.append(legend(legItems));
+  if (legItems.length) wrap.append(legend(legItems));
   const rows = series.flatMap(sr => sr.points.filter(p => p.y !== null && p.y !== undefined).map(p => [sr.name, fmtShort(p.x), (p.approx ? '≈ ' : '') + yFmt(p.y) + unit, p.note || '']));
   wrap.append(table(['Série', 'Date', 'Valeur', 'Remarque'], rows));
   return wrap;
 }
 
 // labels : étiquettes d'abscisse ; series : [{ name, color, values: [nombre|null], partial: [bool] }]
-export function barChart({ labels, series, height = 190, stacked = false, target = null, targetLabel = 'Objectif', yFmt = (v) => fmtNum(v, 0), title, unit = '', partialNote = 'Total partiel : certaines valeurs sont inconnues' }) {
+export function barChart({ labels, series, height = 180, stacked = false, target = null, targetLabel = 'Objectif', yFmt = (v) => fmtNum(v, 0), title, unit = '', partialNote = 'Total partiel : certaines valeurs sont inconnues', integer = false }) {
   const wrap = h('figure', { class: 'chart' });
   if (title) wrap.append(h('figcaption', { class: 'chart-title', text: title }));
   const totals = labels.map((_, i) => stacked ? series.reduce((a, sr) => a + (sr.values[i] || 0), 0) : Math.max(0, ...series.map(sr => sr.values[i] || 0)));
-  const maxV = Math.max(target || 0, ...totals, 1);
-  const ticks = niceTicks(0, maxV, 4);
+  const maxV = Math.max(target || 0, ...totals, integer ? 2 : 1);
+  const ticks = niceTicks(0, maxV, integer ? Math.min(4, Math.ceil(maxV)) : 4, integer);
   const y1 = ticks[ticks.length - 1];
   const n = labels.length;
   const band = (W - PAD.l - PAD.r) / Math.max(n, 1);
   const bw = stacked ? Math.max(4, band * 0.62) : Math.max(3, band * 0.7 / series.length);
   const Y = (v) => PAD.t + (1 - v / y1) * (height - PAD.t - PAD.b);
-  const readout = h('p', { class: 'chart-readout', 'aria-live': 'polite', text: 'Touchez une barre pour lire sa valeur.' });
+  const readout = h('p', { class: 'chart-readout', 'aria-live': 'polite', text: '' });
   const svg = s('svg', { viewBox: `0 0 ${W} ${height}`, class: 'chart-svg', role: 'img', 'aria-label': (title || 'Graphique') + ' : ' + series.map(sr => sr.name).join(', ') });
   const defs = s('defs', {}, s('pattern', { id: 'hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, s('rect', { width: 6, height: 6, fill: 'var(--surface)' }), s('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: 'var(--ink-soft)', 'stroke-width': 3 })));
   svg.append(defs);
@@ -117,13 +120,13 @@ export function barChart({ labels, series, height = 190, stacked = false, target
   });
   if (target) {
     svg.append(s('line', { x1: PAD.l, x2: W - PAD.r, y1: Y(target), y2: Y(target), class: 'ref', stroke: 'var(--ink)' }));
-    svg.append(s('text', { x: W - PAD.r - 2, y: Y(target) - 4, class: 'axis ref-label', 'text-anchor': 'end', text: targetLabel }));
+    svg.append(s('text', { x: W - PAD.r - 2, y: Y(target) - 5 < PAD.t + 8 ? Y(target) + 12 : Y(target) - 5, class: 'axis ref-label', 'text-anchor': 'end', text: targetLabel }));
   }
   wrap.append(svg, readout);
-  const leg = series.map(sr => ({ label: sr.name, color: sr.color }));
+  const leg = series.length > 1 ? series.map(sr => ({ label: sr.name, color: sr.color })) : [];
   if (series.some(sr => (sr.partial || []).some(Boolean))) leg.push({ label: partialNote, color: 'var(--ink-soft)', style: 'hatch' });
   if (target) leg.push({ label: targetLabel, color: 'var(--ink)', style: 'ref' });
-  wrap.append(legend(leg));
+  if (leg.length) wrap.append(legend(leg));
   const rows = labels.map((lb, i) => [lb, ...series.map(sr => sr.values[i] === null || sr.values[i] === undefined ? '—' : yFmt(sr.values[i]) + unit + (sr.partial && sr.partial[i] ? ' (partiel)' : ''))]);
   wrap.append(table(['Période', ...series.map(sr => sr.name)], rows));
   return wrap;

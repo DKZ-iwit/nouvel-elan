@@ -28,6 +28,12 @@ const ICONS = {
   flame: 'M12 22c4 0 7-3 7-7 0-4-3-6-4-10-2 2-3 4-3 6-1-1-2-2-2-4-3 3-5 5-5 8 0 4 3 7 7 7z',
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-1-3-2 .2-1.3-1.3L17 5l-3-1-1 2h-2l-1-2-3 1 .3 2-1.3 1.3L3 8l-1 3 2 1v2l-2 1 1 3 2-.2 1.3 1.3L6 21l3 1 1-2h2l1 2 3-1-.3-2 1.3-1.3 2 .3 1-3-2-1z',
   calendar: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
+  paw: 'M12 20c-3 0-6-1.5-6-4 0-2.5 3-5 6-5s6 2.5 6 5c0 2.5-3 4-6 4zM6.5 10a1.8 2.3 0 1 0 0-.1M10 7a1.8 2.3 0 1 0 0-.1M14 7a1.8 2.3 0 1 0 0-.1M17.5 10a1.8 2.3 0 1 0 0-.1',
+  scale: 'M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8.5 10a3.5 3.5 0 0 1 7 0zM12 10l1.5-2',
+  spark: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z',
+  list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+  target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01',
+  shirt: 'M8 3l-5 3 2 4 2-1v12h10V9l2 1 2-4-5-3c-.5 1.5-2 2.5-4 2.5S8.5 4.5 8 3z',
 };
 export function icon(name, { size = 22, label } = {}) {
   return s('svg', { viewBox: '0 0 24 24', width: size, height: size, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.9, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': label ? null : 'true', role: label ? 'img' : null, 'aria-label': label || null, class: 'ico' },
@@ -54,10 +60,13 @@ export function iconBtn(name, label, onclick, { cls = '' } = {}) {
 
 // ---------- Toasts ----------
 export function toast(message, { action, actionLabel, timeout = 4000, kind = 'info' } = {}) {
+  if (kind === 'reward') timeout = timeout === 4000 ? 3200 : timeout;
   const host = document.getElementById('toasts');
   const el = h('div', { class: `toast toast-${kind}`, role: kind === 'error' ? 'alert' : 'status' },
     h('span', { text: message }),
     action ? h('button', { type: 'button', class: 'toast-action', onclick: () => { action(); el.remove(); }, text: actionLabel || 'OK' }) : null);
+  // Au plus deux messages à la fois, pour ne pas masquer l'écran
+  while (host.children.length >= 2) host.firstElementChild.remove();
   host.append(el);
   if (timeout) setTimeout(() => el.remove(), timeout);
   return el;
@@ -210,6 +219,7 @@ export function section(title, ...children) {
 }
 
 export function pageHeader(title, { back, actions = [], sub } = {}) {
+  if (back && typeof back === 'string' && !back.startsWith('#')) back = '#' + back;
   return h('header', { class: 'page-head' },
     back ? h('a', { class: 'icon-btn', href: back, 'aria-label': 'Retour' }, icon('back')) : null,
     h('div', { class: 'page-head-text' }, h('h1', { text: title }), sub ? h('p', { class: 'muted', text: sub }) : null),

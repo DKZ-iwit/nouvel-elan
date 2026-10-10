@@ -4,16 +4,18 @@ import { S, newProfile, saveProfile, loadProfile, deleteProfile, getEx, draftSes
 import { APP, PROFILE_COLORS, PROFILE_AVATARS } from '../config.js';
 import { EQUIPMENT, ZONES } from '../data/exercises.js';
 import { LEVEL_OPTIONS } from '../data/programs.js';
-import { sheet, btn, field, textInput, textArea, numInput, chips, segmented, pageHeader, section, note, confirmDialog, toast, avatar, icon, kv } from '../ui/components.js';
+import { sheet, btn, iconBtn, field, textInput, textArea, numInput, chips, segmented, pageHeader, section, note, confirmDialog, toast, avatar, icon, kv } from '../ui/components.js';
 import { GOAL_OPTIONS, latest, measureValue, targetLabel, nextMilestone } from './common.js';
 import { openExercisePicker } from './exercises.js';
 import { openImport } from './settings.js';
+import { ANIMALS } from '../companion/art.js';
+import { renderCompanion } from '../companion/view.js';
 
 const CARDIO_PREFS = { marche: 'Marche', tapis_incline: 'Tapis incliné', course: 'Course', velo: 'Vélo', elliptique: 'Elliptique', rameur: 'Rameur', natation: 'Natation' };
 
 export function renderWelcome(root) {
   root.append(h('div', { class: 'welcome' },
-    h('div', { class: 'welcome-mark', 'aria-hidden': 'true' }, h('img', { src: 'icons/icon-192.png', alt: '', width: 72, height: 72 })),
+    h('div', { class: 'welcome-pets', 'aria-hidden': 'true' }, ...Object.keys(ANIMALS).map(a => renderCompanion({ animal: a }, { decor: false, expression: 'sourire' }))),
     h('h1', { text: APP.name }),
     h('p', { class: 'lead', text: 'Tes séances, tes activités et tes progrès, enregistrés sur ce téléphone.' }),
     h('p', { class: 'muted', text: 'Pas de compte ni de serveur : tes données restent sur cet appareil. Pour les transférer, tu les exportes puis tu les importes.' }),
@@ -51,10 +53,12 @@ function weightTargetsEditor(p) {
   return wrap;
 }
 
-export function renderProfileForm(root, mode) {
+export function renderProfileForm(root, mode, params) {
+  const part = mode === 'nouveau' ? null : (params && params.get('partie')) || null;
   const creating = mode === 'nouveau';
   const p = creating ? newProfile({ color: PROFILE_COLORS[S.profiles.length % PROFILE_COLORS.length] }) : JSON.parse(JSON.stringify(S.profile));
-  root.append(pageHeader(creating ? 'Nouveau profil' : 'Modifier le profil', { back: creating ? (S.profiles.length ? '#/profil' : '#/bienvenue') : '#/profil',
+  const PART_TITLES = { identite: 'Identité', objectifs: 'Mes objectifs', materiel: 'Matériel et exercices' };
+  root.append(pageHeader(creating ? 'Nouveau profil' : (PART_TITLES[part] || 'Modifier le profil'), { back: creating ? (S.profiles.length ? '#/profil' : '#/bienvenue') : '#/profil',
     sub: creating ? 'Seul le prénom est obligatoire. Le reste peut être complété plus tard.' : null }));
   const avatarRow = h('div', { class: 'avatar-pick', role: 'group', 'aria-label': 'Avatar' });
   const drawAv = () => {
@@ -103,7 +107,8 @@ export function renderProfileForm(root, mode) {
       h('div', { class: 'field' }, h('span', { class: 'label', text: 'Niveau' }), segmented(Object.fromEntries(Object.entries(LEVEL_OPTIONS).map(([k, v]) => [k, v.label])), p.level, v => { p.level = v; }, { cls: 'seg-wrap' })),
       h('div', { class: 'field' }, h('span', { class: 'label', text: 'Séances en salle par semaine' }), segmented(['1', '2', '3', '4', '5', '6'].map(v => ({ value: v, label: v })), p.gymPerWeek ? String(p.gymPerWeek) : null, v => { p.gymPerWeek = v ? Number(v) : null; })),
       h('div', { class: 'field' }, h('span', { class: 'label', text: 'Durée habituelle d’une séance' }), segmented(['30', '45', '60', '75', '90'].map(v => ({ value: v, label: v + ' min' })), p.durationMin ? String(p.durationMin) : null, v => { p.durationMin = v ? Number(v) : null; }, { cls: 'seg-wrap' })),
-      field('Activité hors salle visée (minutes par semaine)', numInput(p.outdoorMinutesTarget, { decimals: 0, oninput: v => { p.outdoorMinutesTarget = v; } }), { help: 'Facultatif : marche, vélo, natation…' }),
+      field('Activité hors salle visée (minutes par semaine)', numInput(p.outdoorMinutesTarget, { decimals: 0, oninput: v => { p.outdoorMinutesTarget = v; } }), { help: 'Facultatif : marche, vélo, natation…' })),
+    section('Matériel',
       h('div', { class: 'field' }, h('span', { class: 'label', text: 'Matériel disponible' }), chips(EQUIPMENT, p.equipment, v => { p.equipment = v; }))),
     section('Préférences',
       h('div', { class: 'field' }, h('span', { class: 'label', text: 'Cardio apprécié' }), chips(CARDIO_PREFS, p.cardioPrefs, v => { p.cardioPrefs = v; })),
@@ -112,37 +117,51 @@ export function renderProfileForm(root, mode) {
       h('div', { class: 'field' }, h('span', { class: 'label', text: 'Exercices exclus' }), excLabel, btn('Choisir', () => openExercisePicker({ multi: true, selected: p.excluded, onPick: ids => { p.excluded = ids; drawLists(); } }), { small: true }),
         h('p', { class: 'help', text: 'Un exercice exclu n’est jamais proposé, ni en remplacement.' })),
       field('Repères personnels', refs, { help: 'Informations de contexte (habitudes, capacités déclarées). Elles ne créent aucun relevé.' })),
-    h('div', { class: 'sticky-actions' }, h('button', { type: 'submit', class: 'btn btn-primary', text: creating ? 'Créer le profil' : 'Enregistrer' }))));
+    h('div', { class: 'form-actions' }, h('button', { type: 'submit', class: 'btn btn-primary', text: creating ? 'Créer le profil' : 'Enregistrer' }))));
+  // Affichage progressif : en modification, seule la rubrique demandée est visible.
+  const KEEP = { identite: ['Identité'], objectifs: ['Objectifs', 'Entraînement'], materiel: ['Matériel', 'Préférences'] };
+  if (part && KEEP[part]) {
+    for (const sec of root.querySelectorAll('form > section')) {
+      const t = sec.querySelector('.block-title')?.textContent;
+      if (!KEEP[part].includes(t)) sec.hidden = true;
+    }
+  }
+  if (creating) {
+    // Création : l'essentiel d'abord, le reste replié
+    const secs = [...root.querySelectorAll('form > section')];
+    for (const sec of secs.slice(2)) {
+      const det = h('details', { class: 'box' }, h('summary', { text: sec.querySelector('.block-title')?.textContent + ' (facultatif)' }));
+      sec.querySelector('.block-title')?.remove();
+      sec.replaceWith(det); det.append(sec);
+    }
+  }
 }
 
 export function renderProfile(root) {
   const p = S.profile;
   const w = latest(S.data.measurements, 'poids');
   const ms = w ? nextMilestone(p, w.value) : null;
-  root.append(h('header', { class: 'profile-head' }, avatar(p, 56),
-    h('div', { class: 'grow' }, h('h1', { text: p.name }), h('p', { class: 'muted', text: [p.goal ? GOAL_OPTIONS[p.goal] : 'Objectif à renseigner', p.level ? LEVEL_OPTIONS[p.level].label : null].filter(Boolean).join(', ') })),
-    btn('Modifier', () => { go('#/profil/edition'); }, { small: true, iconName: 'edit' })));
+  root.append(h('header', { class: 'greet' }, h('div', { class: 'row' }, avatar(p, 52),
+    h('div', {}, h('h1', { text: p.name }), h('p', { class: 'muted', text: [p.goal ? GOAL_OPTIONS[p.goal] : 'Objectif à renseigner', p.level ? LEVEL_OPTIONS[p.level].label : null].filter(Boolean).join(' · ') }))),
+    iconBtn('edit', 'Modifier l’identité', () => go('#/profil/edition?partie=identite'))));
 
-  root.append(section(null,
-    h('div', { class: 'kvs' },
-      kv('Séances par semaine', p.gymPerWeek ? String(p.gymPerWeek) : 'À renseigner'),
-      kv('Durée habituelle', p.durationMin ? p.durationMin + ' min' : 'À renseigner'),
-      kv('Dernier poids', w ? `${measureValue(w)} (${fmtDate(w.date)})` : 'Aucun'),
-      ms ? kv('Prochain palier', targetLabel(ms)) : null,
-      p.heightCm ? kv('Taille', p.heightCm + ' cm') : null,
-      p.birthYear ? kv('Année de naissance', String(p.birthYear)) : null),
-    (p.weightTargets || []).length ? h('p', { class: 'fine', text: 'Paliers : ' + p.weightTargets.map(t => (t.label ? t.label + ' ' : '') + targetLabel(t)).join(' ; ') }) : null,
-    (p.references || []).length ? h('div', {}, h('h3', { class: 'h3', text: 'Repères' }), h('ul', { class: 'bullets' }, ...p.references.map(r => h('li', { text: r })))) : null));
-
-  const link = (href, ic, title, sub) => h('li', {}, h('a', { class: 'list-link', href }, icon(ic), h('span', { class: 'grow' }, h('span', { class: 'block-txt', text: title }), sub ? h('span', { class: 'fine', text: sub }) : null), icon('chevron', { size: 18 })));
+  const item = (href, ic, title, sub, tone = '') => h('li', {}, h('a', { class: 'list-link', href }, h('span', { class: `ico-wrap ${tone}` }, icon(ic, { size: 20 })), h('span', { class: 'grow' }, h('span', { class: 'block-txt strong', text: title }), sub ? h('span', { class: 'fine', text: sub }) : null), icon('chevron', { size: 18 })));
   const attCount = (p.attention || []).length;
-  root.append(section('Mon espace', h('ul', { class: 'list nav-list' },
-    link('#/programme', 'calendar', 'Mon programme', p.program?.status === 'ok' ? `${p.program.goalLabel}, ${p.program.gymPerWeek} séance(s) par semaine` : 'À compléter'),
-    link('#/attention', 'info', 'Confort et points d’attention', attCount ? `${attCount} zone(s) : ${p.attention.map(a => ZONES[a.zone]).join(', ')}` : 'Aucun point renseigné'),
-    link('#/mesures', 'progression', 'Mesures', `${S.data.measurements.length} mesure(s)`),
-    link('#/exercices', 'seance', 'Exercices', 'Bibliothèque, préférés, exclusions, exercices personnalisés'),
-    link('#/modeles', 'copy', 'Modèles de séance', `${S.data.templates.length} modèle(s)`),
-    link('#/reglages', 'settings', 'Réglages et sauvegardes', 'Thème, export, import, stockage'))));
+  const comp = p.companion;
+  root.append(h('ul', { class: 'list' },
+    item('#/profil/edition?partie=objectifs', 'target', 'Mes objectifs', [p.goal ? GOAL_OPTIONS[p.goal] : 'À renseigner', p.gymPerWeek ? `${p.gymPerWeek} séance(s)/semaine` : null, ms ? `palier ${targetLabel(ms)}` : null].filter(Boolean).join(' · ')),
+    item('#/programme', 'calendar', 'Mon programme', p.program?.status === 'ok' ? `${p.program.days.length} journée(s) : ${p.program.days.map(d => d.label).join(', ')}` : 'À compléter'),
+    item('#/attention', 'info', 'Confort et points d’attention', attCount ? p.attention.map(a => ZONES[a.zone]).join(', ') : 'Aucun point renseigné', 'coral'),
+    item('#/profil/edition?partie=materiel', 'seance', 'Matériel et exercices', `${(p.equipment || []).length} type(s) de matériel · ${(p.excluded || []).length} exclusion(s)`),
+    item('#/compagnon', 'paw', 'Mon compagnon', comp ? `${comp.name || 'Sans nom'} · niveau ${comp.level || 1}` : 'À choisir', 'gold'),
+    item('#/mesures', 'scale', 'Mesures', w ? `Dernier poids : ${measureValue(w)} (${fmtDate(w.date)})` : `${S.data.measurements.length} mesure(s)`),
+    item('#/reglages', 'settings', 'Réglages et sauvegardes', S.lastExport ? `Dernier export : ${fmtDate(S.lastExport.slice(0, 10))}` : 'Aucun export pour l’instant')));
+
+  root.append(h('details', { class: 'box' }, h('summary', { text: 'Plus d’options' }),
+    h('ul', { class: 'list' },
+      item('#/exercices', 'list', 'Bibliothèque d’exercices', 'Préférés, exclusions, incréments, exercices personnalisés'),
+      item('#/modeles', 'copy', 'Modèles de séance', `${S.data.templates.length} modèle(s)`)),
+    (p.references || []).length ? h('div', {}, h('h3', { class: 'h3', text: 'Repères' }), h('ul', { class: 'bullets fine' }, ...p.references.map(r => h('li', { text: r })))) : null));
 
   root.append(section('Profils sur cet appareil',
     h('ul', { class: 'list' }, ...S.profiles.map(x => h('li', { class: 'list-row' }, avatar(x, 30), h('span', { class: 'grow', text: x.name + (x.id === p.id ? ' (actif)' : '') }),
@@ -150,10 +169,10 @@ export function renderProfile(root) {
     h('div', { class: 'row' },
       btn('Nouveau profil', () => { go('#/profil/nouveau'); }, { iconName: 'plus', small: true }),
       btn('Supprimer ce profil', async () => {
-        const ok = await confirmDialog(`Supprimer le profil ${p.name} et toutes ses données (séances, activités, mesures) sur cet appareil ?`, { danger: true, confirmLabel: 'Supprimer définitivement', detail: 'Les autres profils ne sont pas touchés. Pense à exporter ce profil avant si tu veux le garder.' });
+        const ok = await confirmDialog(`Supprimer le profil ${p.name} et toutes ses données (séances, activités, mesures, compagnon) sur cet appareil ?`, { danger: true, confirmLabel: 'Supprimer définitivement', detail: 'Les autres profils ne sont pas touchés. Pense à exporter ce profil avant si tu veux le garder.' });
         if (!ok) return;
         await deleteProfile(p.id); toast('Profil supprimé.');
-        location.hash = S.profile ? '#/accueil' : '#/bienvenue';
+        go(S.profile ? '#/accueil' : '#/bienvenue');
       }, { kind: 'danger', small: true, iconName: 'trash' })),
-    h('p', { class: 'fine', text: 'Les données restent sur cet appareil. Pour utiliser un profil sur un autre téléphone : Réglages > Exporter, puis Importer sur l’autre appareil.' })));
+    h('p', { class: 'fine', text: 'Les profils sont séparés mais pas protégés par un mot de passe. Pour changer de téléphone : Réglages > Exporter, puis Importer.' })));
 }

@@ -1,6 +1,6 @@
 // Thème clair/sombre et gestion du service worker.
 import { COLORS } from './config.js';
-import { S } from './state.js';
+import { S, flushAll } from './state.js';
 import { toast } from './ui/components.js';
 
 const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
@@ -19,16 +19,21 @@ if (mq && mq.addEventListener) mq.addEventListener('change', () => { if ((S.sett
 let registration = null;
 let updateShown = false;
 
-function flushPending() { try { window.__elanFlush && window.__elanFlush(); } catch { /* ignoré */ } }
-
 function offerUpdate(worker) {
   if (updateShown || !worker) return;
   updateShown = true;
   toast('Nouvelle version disponible.', {
     timeout: 0, actionLabel: 'Mettre à jour', action: async () => {
-      flushPending();
-      // Laisse le temps à la sauvegarde automatique d'une séance en cours de s'écrire
-      await new Promise(r => setTimeout(r, 400));
+      // Écrit les changements en attente et attend la confirmation d'IndexedDB avant d'activer
+      // la nouvelle version. En cas d'échec, l'écran reste en place.
+      try {
+        await flushAll();
+      } catch (e) {
+        updateShown = false;
+        toast('Mise à jour reportée : la sauvegarde de ta séance a échoué (' + (e?.message || 'erreur de stockage') + '). Réessaie après avoir libéré de l’espace.', { kind: 'error', timeout: 9000 });
+        offerUpdate(worker);
+        return;
+      }
       worker.postMessage({ type: 'SKIP_WAITING' });
     },
   });

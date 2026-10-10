@@ -1,6 +1,7 @@
 import { h, uid, todayISO, fmtDate, fmtNum } from '../util.js';
 import { go } from '../router.js';
-import { S, saveRecord, deleteRecord } from '../state.js';
+import { S, saveRecord, deleteRecord, companionSync } from '../state.js';
+import { rewardToast } from './companion.js';
 import { ACTIVITY_TYPES, INTENSITIES } from '../data/exercises.js';
 import { activityCalories, weightAt } from '../engine/calories.js';
 import { doneSessions } from '../engine/stats.js';
@@ -44,6 +45,8 @@ export function renderActivity(root, id) {
     a.calories = cal.value ? { ...cal } : null;
     await saveRecord('activities', a);
     toast(existing ? 'Activité modifiée.' : 'Activité ajoutée.');
+    const res = await companionSync({ silent: !!existing });
+    rewardToast(res);
     location.hash = existing ? '#/historique' : '#/accueil';
   } },
     h('div', { class: 'field' }, h('span', { class: 'label', text: 'Type' }), segmented(ACTIVITY_TYPES, a.type, v => { a.type = v; assistWrap.hidden = v !== 'velo_electrique'; customWrap.hidden = v !== 'autre'; refresh(); }, { cls: 'seg-wrap', label: 'Type d’activité' })),
@@ -67,10 +70,10 @@ export function renderActivity(root, id) {
       kcalOut),
     field('Notes', textArea(a.notes, { rows: 2, oninput: v => { a.notes = v; } })),
     dupWarn,
-    h('div', { class: 'sticky-actions' },
+    h('div', { class: 'form-actions' },
       existing ? btn('Dupliquer', async () => {
         const c = { ...JSON.parse(JSON.stringify(existing)), id: uid(), date: todayISO(), createdAt: null, updatedAt: null };
-        await saveRecord('activities', c); toast('Activité dupliquée à la date du jour.'); go(`#/activite/${c.id}`);
+        await saveRecord('activities', c); toast('Activité dupliquée à la date du jour.'); rewardToast(await companionSync()); go(`#/activite/${c.id}`);
       }, { iconName: 'copy' }) : null,
       existing ? btn('Supprimer', async () => {
         if (!await confirmDialog('Supprimer cette activité ?', { danger: true, confirmLabel: 'Supprimer' })) return;

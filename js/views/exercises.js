@@ -1,53 +1,93 @@
 import { h, clear, uid, fmtNum, parseNum } from '../util.js';
 import { go } from '../router.js';
 import { S, getEx, allExercises, saveRecord, deleteRecord, saveProfile } from '../state.js';
+import { compatibility } from '../engine/suggest.js';
+import { usageCounts } from '../engine/program.js';
 import { MUSCLES, EQUIPMENT, FAMILIES, PATTERNS, LEVELS, MEASURES, LOADS, ZONES, MOVES, equipmentLabel, checkEquipment } from '../data/exercises.js';
 import { sheet, btn, iconBtn, field, textInput, textArea, numInput, selectInput, chips, segmented, pageHeader, section, note, confirmDialog, toast, emptyState, icon } from '../ui/components.js';
 
 function norm(t) { return (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
 
-// Sélecteur d'exercices (simple ou multiple)
-export function openExercisePicker({ title = 'Choisir un exercice', multi = false, selected = [], onPick, filter, suggested = [], cat = null }) {
+// Sélecteur d'exercices.
+// mode 'select' : choix libre (réglages du profil), simple ou multiple.
+// mode 'add' / 'replace' : filtres du profil et du jour appliqués (exclusions, mouvements et exercices
+// gênants, matériel, niveau, douleur du jour, rôle). Une exclusion n'est jamais contournée ;
+// les autres conflits demandent une confirmation explicite.
+export function openExercisePicker({ title = 'Choisir un exercice', multi = false, selected = [], onPick, filter, cat = null, mode = 'select', pattern = null, current = null, todayAttention = [] }) {
   let q = '';
   let showAll = false;
+  const guarded = mode === 'add' || mode === 'replace';
   const sel = new Set(selected);
+  const usage = usageCounts(S.data.sessions);
   const listEl = h('div', { class: 'picker-list' });
   const search = h('input', { type: 'search', placeholder: 'Rechercher (nom, muscle, machine)', 'aria-label': 'Rechercher un exercice', oninput: (e) => { q = norm(e.target.value); draw(); } });
-  const eqToggle = h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { showAll = e.target.checked; draw(); } }), ' Afficher aussi le matériel non déclaré');
-  function matches(ex) {
+  const toggle = h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { showAll = e.target.checked; draw(); } }),
+    guarded ? (mode === 'replace' ? ' Afficher aussi les exercices non compatibles ou d’un autre rôle' : ' Afficher aussi les exercices non compatibles') : ' Afficher aussi le matériel non déclaré');
+  const compat = (ex) => compatibility(ex, S.profile, { usage, todayAttention, pattern: mode === 'replace' ? pattern : null });
+  function textMatch(ex) {
     if (cat && ex.cat !== cat) return false;
     if (filter && !filter(ex)) return false;
-    if (!showAll && S.profile && (S.profile.equipment || []).length && !checkEquipment(ex, S.profile.equipment) && !sel.has(ex.id)) return false;
+    if (current && ex.id === current.id) return false;
     if (!q) return true;
     const hay = norm([ex.name, ex.desc, ...ex.primary.map(m => MUSCLES[m]), PATTERNS[ex.pattern], equipmentLabel(ex)].join(' '));
     return q.split(/\s+/).every(w => hay.includes(w));
   }
-  function row(ex, noteTxt) {
-    const excluded = (S.profile?.excluded || []).includes(ex.id);
-    const b = h('button', { type: 'button', class: 'pick-row', 'aria-pressed': multi ? String(sel.has(ex.id)) : null, onclick: () => {
+  async function choose(ex, c) {
+    if (c && c.blocked) { toast('Cet exercice est exclu de ton profil. Retire l’exclusion dans Profil > Matériel et exercices pour le proposer.', { kind: 'error', timeout: 6000 }); return; }
+    if (c && (c.reasons.length || !c.sameRole)) {
+      const why = [...c.reasons, ...(!c.sameRole ? ['Rôle différent de l’exercice remplacé'] : [])];
+      const ok = await confirmDialog(`${ex.name} ne correspond pas à tes réglages : ${why.join(' ; ').toLowerCase()}.`, { title: 'Conflit avec ton profil', confirmLabel: 'Choisir quand même', detail: 'Ton profil n’est pas modifié. L’exercice est ajouté seulement à cette séance.' });
+      if (!ok) return;
+    }
+    sh.close(); onPick(ex);
+  }
+  function row(ex, c, noteTxt) {
+    const b = h('button', { type: 'button', class: `pick-row${c && !c.ok ? ' conflict' : ''}`, 'aria-pressed': multi ? String(sel.has(ex.id)) : null, onclick: () => {
       if (multi) { if (sel.has(ex.id)) sel.delete(ex.id); else sel.add(ex.id); b.setAttribute('aria-pressed', String(sel.has(ex.id))); }
+      else if (guarded) choose(ex, c);
       else { sh.close(); onPick(ex); }
     } },
       h('span', { class: 'pick-main' }, h('span', { class: 'pick-name', text: ex.name + (ex.custom ? ' (perso)' : '') }),
-        h('span', { class: 'fine', text: noteTxt || `${ex.primary.map(m => MUSCLES[m]).join(', ')} · ${equipmentLabel(ex)}` })),
-      excluded ? h('span', { class: 'tag tag-alert', text: 'Exclu' }) : null,
+        h('span', { class: 'fine', text: c && !c.ok ? (c.blocked ? 'Exclu de ton profil' : [...c.reasons, ...(!c.sameRole ? ['Autre rôle : ' + (PATTERNS[ex.pattern] || '').toLowerCase()] : [])].join(' ; ')) : (noteTxt || `${ex.primary.map(m => MUSCLES[m]).join(', ')} · ${equipmentLabel(ex)}`) })),
+      c && c.blocked ? h('span', { class: 'tag tag-alert', text: 'Exclu' }) : c && !c.ok ? h('span', { class: 'tag', text: 'À confirmer' }) : null,
+      !guarded && (S.profile?.excluded || []).includes(ex.id) ? h('span', { class: 'tag tag-alert', text: 'Exclu' }) : null,
       multi ? h('span', { class: 'pick-check', 'aria-hidden': 'true' }, icon('check', { size: 18 })) : null);
     return b;
   }
   function draw() {
     clear(listEl);
-    const sugg = suggested.filter(x => matches(x.ex));
-    if (sugg.length && !q) {
-      listEl.append(h('h3', { class: 'picker-group', text: 'Alternatives proposées' }), ...sugg.map(x => row(x.ex, x.note)));
+    const all = allExercises().filter(textMatch);
+    if (!guarded) {
+      const groups = {};
+      for (const ex of all) {
+        if (!showAll && S.profile && (S.profile.equipment || []).length && !checkEquipment(ex, S.profile.equipment) && !sel.has(ex.id)) continue;
+        (groups[ex.cat === 'cardio' ? 'cardio' : ex.pattern] = groups[ex.cat === 'cardio' ? 'cardio' : ex.pattern] || []).push(ex);
+      }
+      if (!Object.keys(groups).length) listEl.append(h('p', { class: 'muted', text: 'Aucun exercice ne correspond.' }));
+      for (const [k, list] of Object.entries(groups)) listEl.append(h('h3', { class: 'picker-group', text: k === 'cardio' ? 'Cardio' : PATTERNS[k] || k }), ...list.map(ex => row(ex)));
+      return;
     }
-    const groups = {};
-    for (const ex of allExercises()) if (matches(ex)) (groups[ex.cat === 'cardio' ? 'cardio' : ex.pattern] = groups[ex.cat === 'cardio' ? 'cardio' : ex.pattern] || []).push(ex);
-    const keys = Object.keys(groups);
-    if (!keys.length) listEl.append(h('p', { class: 'muted', text: 'Aucun exercice ne correspond. Tu peux créer un exercice personnalisé depuis Profil > Exercices.' }));
-    for (const k of keys) listEl.append(h('h3', { class: 'picker-group', text: k === 'cardio' ? 'Cardio' : PATTERNS[k] || k }), ...groups[k].map(ex => row(ex)));
+    const scored = all.map(ex => ({ ex, c: compat(ex) }));
+    const altIds = current ? (current.alts || []).map(([id]) => id) : [];
+    const good = scored.filter(x => x.c.ok).sort((a, b) => (altIds.includes(b.ex.id) - altIds.includes(a.ex.id)) || ((usage[b.ex.id] || 0) - (usage[a.ex.id] || 0)));
+    const noteFor = (ex) => current ? ((current.alts || []).find(([id]) => id === ex.id) || [])[1] : null;
+    if (mode === 'replace') {
+      listEl.append(h('h3', { class: 'picker-group', text: `Compatibles, même rôle (${PATTERNS[pattern] || 'exercice'})` }));
+      if (good.length) listEl.append(...good.map(x => row(x.ex, x.c, noteFor(x.ex))));
+      else listEl.append(h('p', { class: 'muted', text: 'Aucune alternative compatible pour ce rôle. Les charges ne sont jamais transférées d’un exercice à l’autre.' }));
+    } else {
+      const groups = {};
+      for (const x of good) (groups[x.ex.pattern] = groups[x.ex.pattern] || []).push(x);
+      for (const [k, list] of Object.entries(groups)) listEl.append(h('h3', { class: 'picker-group', text: PATTERNS[k] || k }), ...list.map(x => row(x.ex, x.c)));
+      if (!good.length) listEl.append(h('p', { class: 'muted', text: 'Aucun exercice compatible ne correspond.' }));
+    }
+    const others = scored.filter(x => !x.c.ok);
+    if (showAll && others.length) {
+      listEl.append(h('h3', { class: 'picker-group', text: 'Non compatibles avec tes réglages' }), ...others.map(x => row(x.ex, x.c)));
+    } else if (others.length) listEl.append(h('p', { class: 'fine', text: `${others.length} exercice(s) masqué(s) car non compatibles avec ton profil ou la séance du jour.` }));
   }
   draw();
-  const sh = sheet({ title, wide: true, content: h('div', {}, search, eqToggle, listEl),
+  const sh = sheet({ title, wide: true, content: h('div', { class: 'stack-sm' }, search, toggle, listEl),
     actions: multi ? [btn('Valider', () => { sh.close(); onPick([...sel]); }, { kind: 'primary' })] : [] });
   return sh;
 }

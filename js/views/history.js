@@ -7,11 +7,12 @@ import { sessionCalories, activityCalories } from '../engine/calories.js';
 import { btn, pageHeader, section, segmented, confirmDialog, toast, emptyState, icon, kv } from '../ui/components.js';
 import { ENERGY, SESSION_DIFFICULTY, kcalResultText, weightNote } from './common.js';
 import { startDraft, newSessionObj, instantiate, saveAsTemplate } from './session.js';
+import { openAddMenu } from './add.js';
 
 let filter = 'tout';
 
 export function renderHistory(root) {
-  root.append(pageHeader('Historique'));
+  root.append(pageHeader('Historique', { actions: [btn('Ajouter', () => openAddMenu(), { small: true, iconName: 'plus', kind: 'primary' })] }));
   root.append(segmented({ tout: 'Tout', salle: 'Salle', dehors: 'Hors salle' }, filter, v => { filter = v || 'tout'; draw(); }, { label: 'Filtrer' }));
   const list = h('div', {});
   root.append(list);
@@ -21,7 +22,7 @@ export function renderHistory(root) {
     if (filter !== 'dehors') for (const s of doneSessions(S.data.sessions)) items.push({ kind: 'gym', date: s.date, s });
     if (filter !== 'salle') for (const a of S.data.activities) items.push({ kind: 'out', date: a.date, a });
     items.sort((x, y) => y.date.localeCompare(x.date) || (y.s?.createdAt || y.a?.createdAt || '').localeCompare(x.s?.createdAt || x.a?.createdAt || ''));
-    if (!items.length) { list.append(emptyState('Rien d’enregistré pour l’instant', 'Tes séances terminées et tes activités apparaîtront ici.', btn('Ajouter une activité', () => { go('#/activite/nouvelle'); }, { iconName: 'plus' }))); return; }
+    if (!items.length) { list.append(emptyState('Rien d’enregistré pour l’instant', 'Tes séances terminées, activités hors salle et sorties à vélo apparaîtront ici.', btn('Ajouter', () => openAddMenu(), { iconName: 'plus', kind: 'primary' }))); return; }
     let cur = null, ul = null;
     for (const it of items) {
       const w = weekStart(it.date);

@@ -29,15 +29,37 @@ export function incrementFor(ex, profile) {
   return v || ex.inc || 2.5;
 }
 
-// Conseil de charge pour un exercice (double progression).
+// Description exacte d'un ensemble de séries : « 2 × 12 à 50 kg, 1 × 8 à 40 kg (allégée) »
+const ROLE_LABEL = { ramp: 'montée', drop: 'allégée' };
+export function describeSets(sets, { assist = false, time = false } = {}) {
+  const groups = [];
+  for (const st of sets) {
+    const k = `${st.reps}|${st.load}|${st.seconds}|${st.type}`;
+    const g = groups[groups.length - 1];
+    if (g && g.k === k) g.n++; else groups.push({ k, n: 1, st });
+  }
+  return groups.map(({ n, st }) => {
+    const role = ROLE_LABEL[st.type] ? ` (${ROLE_LABEL[st.type]})` : '';
+    if (time || (st.seconds !== null && st.seconds !== undefined && (st.reps === null || st.reps === undefined))) return `${n} × ${st.seconds ?? '?'} s${role}`;
+    const load = st.load !== null && st.load !== undefined ? ` à ${fmt(st.load)} kg${assist ? ' d’assistance' : ''}` : '';
+    return `${n} × ${st.reps ?? '?'}${load}${role}`;
+  }).join(', ');
+}
+
+// Conseil de charge (double progression).
+// Toutes les séries de travail sont examinées. Les séries explicitement marquées « montée » ou
+// « allégée » sont décrites mais ne conditionnent pas la progression ; sans marquage, aucune série
+// plus légère n'est ignorée. Si les données ne permettent pas de conclure, la charge est conservée.
 export function loadAdvice(ex, key, sessions, range, profile, flags = {}) {
   const hist = comparableEntries(sessions, key, flags.beforeDate);
   const inc = incrementFor(ex, profile);
   const [rMin, rMax] = range;
+  const isAssist = ex.measure === 'assist_reps' || ex.load === 'assist';
+  const isTime = ex.measure === 'time';
   if (!hist.length) {
-    if (ex.measure === 'time') return { kind: 'start', seconds: null, text: 'Première fois : tiens une durée confortable et note-la.', basis: 'Aucun historique comparable' };
+    if (isTime) return { kind: 'start', seconds: null, text: 'Première fois : tiens une durée confortable et note-la.', basis: 'Aucun historique comparable' };
     if (ex.measure === 'reps') return { kind: 'start', load: null, text: 'Première fois : fais les répétitions confortables, sans aller à l’échec.', basis: 'Aucun historique comparable' };
-    if (ex.measure === 'assist_reps') return { kind: 'start', load: null, text: 'Première fois : choisis une assistance qui permet ' + rMin + ' répétitions propres, puis note-la.', basis: 'Aucun historique comparable' };
+    if (isAssist) return { kind: 'start', load: null, text: `Première fois : choisis une assistance qui permet ${rMin} répétitions propres, puis note-la.`, basis: 'Aucun historique comparable' };
     return { kind: 'start', load: null, text: 'Charge de départ à déterminer : fais une série d’essai légère, puis choisis une charge qui laisse 2 à 3 répétitions en réserve.', basis: 'Aucun historique comparable' };
   }
   const { session: ls, entry: le } = hist[0];
@@ -47,65 +69,73 @@ export function loadAdvice(ex, key, sessions, range, profile, flags = {}) {
   const effortOk = le.effort ? ['facile', 'maitrise'].includes(le.effort) : (ls.feedback && ['facile', 'adaptee'].includes(ls.feedback.difficulty));
   const effortHard = le.effort ? ['difficile', 'maximal'].includes(le.effort) : (ls.feedback && ls.feedback.difficulty === 'difficile');
   const noInc = flags.noIncrease;
+  const main = ws.filter(s => !s.type || s.type === 'work');
+  const marked = ws.filter(s => s.type === 'ramp' || s.type === 'drop');
+  const rel = main.length ? main : ws;
+  const analysed = describeSets(rel, { assist: isAssist, time: isTime });
+  const markedNote = main.length && marked.length ? ` Séries signalées comme montée ou allégées, non prises en compte : ${describeSets(marked, { assist: isAssist, time: isTime })}.` : '';
+  const unknownCount = le.setsCountKnown === false;
 
-  if (ex.measure === 'time') {
-    const secs = ws.map(s => s.seconds).filter(v => v !== null && v !== undefined);
-    const best = secs.length ? Math.max(...secs) : null;
-    if (best === null) return { kind: 'keep', seconds: null, text: 'Durée non renseignée la dernière fois.', basis };
-    if (!noInc && effortOk && le.setsCountKnown !== false) return { kind: 'increase', seconds: best + (inc || 5), text: `Tenter ${best + (inc || 5)} s (dernière fois ${best} s avec un effort maîtrisé).`, basis };
-    return { kind: 'keep', seconds: best, text: noInc ? `Garder ${best} s : ${flags.noIncreaseReason}.` : `Viser ${best} s, puis quelques secondes de plus si c’est confortable.`, basis };
+  if (isTime) {
+    const secs = rel.map(s => s.seconds).filter(v => v !== null && v !== undefined);
+    if (!secs.length) return { kind: 'keep', seconds: null, text: 'Durée non renseignée la dernière fois.', basis };
+    const minS = Math.min(...secs), best = Math.max(...secs);
+    if (!noInc && effortOk && !unknownCount && minS === best) return { kind: 'increase', seconds: best + (inc || 5), text: `Toutes les séries analysées (${analysed}) tenues avec un effort maîtrisé : viser ${best + (inc || 5)} s.`, basis };
+    return { kind: 'keep', seconds: best, text: noInc ? `Garder ${best} s : ${flags.noIncreaseReason}.` : `Viser ${best} s sur chaque série (analyse : ${analysed}).`, basis };
   }
   if (ex.measure === 'reps') {
-    const best = Math.max(...ws.map(s => s.reps || 0));
-    if (!noInc && effortOk) return { kind: 'increase', reps: best + 1, text: `Viser ${best + 1} répétitions par série (dernière fois ${best}).`, basis };
-    return { kind: 'keep', reps: best, text: noInc ? `Garder ${best} répétitions : ${flags.noIncreaseReason}.` : `Viser ${best} répétitions par série.`, basis };
+    const reps = rel.map(s => s.reps || 0);
+    const best = Math.max(...reps), low = Math.min(...reps);
+    if (!noInc && effortOk && low === best) return { kind: 'increase', reps: best + 1, text: `Toutes les séries à ${best} répétitions avec un effort maîtrisé : viser ${best + 1}.`, basis };
+    return { kind: 'keep', reps: best, text: noInc ? `Garder ${best} répétitions : ${flags.noIncreaseReason}.` : `Viser ${best} répétitions sur chaque série (analyse : ${analysed}).`, basis };
   }
 
-  const isAssist = ex.measure === 'assist_reps' || ex.load === 'assist';
-  const loads = ws.map(s => s.load).filter(v => v !== null && v !== undefined);
+  const missingLoad = rel.some(s => s.load === null || s.load === undefined);
+  const loads = rel.map(s => s.load).filter(v => v !== null && v !== undefined);
   if (!loads.length) return { kind: 'keep', load: null, text: 'Charge non renseignée la dernière fois.', basis };
   const top = isAssist ? Math.min(...loads) : Math.max(...loads);
-  const atTop = ws.filter(s => s.load === top);
-  const allTop = atTop.every(s => (s.reps || 0) >= rMax);
-  const enoughSets = le.setsCountKnown !== false && atTop.length >= Math.min(2, ws.length);
-  const unitWord = isAssist ? 'd’assistance' : '';
+  const unit = isAssist ? ' d’assistance' : '';
+  if (missingLoad) return { kind: 'keep', load: top, text: `Une série n’a pas de charge renseignée : impossible de conclure, garder ${fmt(top)} kg${unit}.`, basis };
+  const uniform = new Set(loads).size === 1;
 
-  // Deux séances comparables consécutives sous la plage ou jugées très dures → légère baisse
+  // Deux séances comparables de suite sous la plage ou au maximum de l'effort → légère baisse
   if (hist.length >= 2) {
-    const prev = hist[1].entry;
-    const pw = workSets(prev);
-    const pLoads = pw.map(s => s.load).filter(v => v !== null && v !== undefined);
+    const prevE = hist[1].entry;
+    const pw = workSets(prevE);
+    const pRel = pw.filter(s => !s.type || s.type === 'work').length ? pw.filter(s => !s.type || s.type === 'work') : pw;
+    const pLoads = pRel.map(s => s.load).filter(v => v !== null && v !== undefined);
     const pTop = pLoads.length ? (isAssist ? Math.min(...pLoads) : Math.max(...pLoads)) : null;
     const below = (arr, t) => arr.filter(s => s.load === t).some(s => (s.reps || 0) < rMin);
-    const hardPrev = prev.effort === 'maximal' || (hist[1].session.feedback && hist[1].session.feedback.difficulty === 'difficile');
+    const hardPrev = prevE.effort === 'maximal' || (hist[1].session.feedback && hist[1].session.feedback.difficulty === 'difficile');
     const hardLast = le.effort === 'maximal' || (ls.feedback && ls.feedback.difficulty === 'difficile');
-    if (pTop === top && ((below(ws, top) && below(pw, top)) || (hardLast && hardPrev))) {
+    if (pTop === top && ((below(rel, top) && below(pRel, top)) || (hardLast && hardPrev))) {
       const nl = isAssist ? top + inc : Math.max(0, top - inc);
-      return { kind: 'decrease', load: nl, text: `Deux séances de suite difficiles à ${fmt(top)} kg ${unitWord} : proposition ${fmt(nl)} kg ${unitWord} pour retrouver la plage ${rMin}–${rMax}.`.replace('  ', ' '), basis };
+      return { kind: 'decrease', load: nl, text: `Deux séances de suite difficiles à ${fmt(top)} kg${unit} : proposition ${fmt(nl)} kg${unit} pour retrouver la plage ${rMin}–${rMax}.`, basis };
     }
   }
-  if (le.setsCountKnown === false) {
-    return { kind: 'keep', load: top, text: `Nombre de séries non précisé la dernière fois : repartir de ${fmt(top)} kg ${unitWord}.`.replace('  ', ' '), basis };
+  if (unknownCount) return { kind: 'keep', load: top, text: `Nombre de séries non précisé la dernière fois : impossible de vérifier toutes les séries, garder ${fmt(top)} kg${unit}.`, basis };
+
+  const reachedAll = rel.every(s => (s.reps || 0) >= rMax);
+  if (reachedAll) {
+    const scope = uniform ? `Toutes les séries analysées (${analysed}) atteignent ${rMax} répétitions` : `Toutes les séries analysées, à charges différentes (${analysed}), atteignent ${rMax} répétitions`;
+    if (noInc) return { kind: 'keep', load: top, text: `${scope}, mais la charge est conservée : ${flags.noIncreaseReason}.${markedNote}`, basis };
+    if (isAssist && top <= 0) return { kind: 'keep', load: 0, text: `${scope} sans assistance : vise davantage de répétitions ou passe à la traction libre.${markedNote}`, basis };
+    const next = isAssist ? Math.max(0, top - inc) : top + inc;
+    if (effortOk) return { kind: 'increase', load: next, text: `${scope} avec un effort maîtrisé : ${isAssist ? `assistance réduite à ${fmt(next)} kg` : `+${fmt(inc)} kg, soit ${fmt(next)} kg`}${uniform ? '' : ' sur la série la plus difficile'}.${markedNote}`, basis };
+    if (effortHard) return { kind: 'keep', load: top, text: `${scope}, mais l’effort déclaré était difficile : garder ${fmt(top)} kg${unit} une séance de plus.${markedNote}`, basis };
+    return { kind: 'keep', load: top, text: `${scope}. Effort non déclaré : si c’était maîtrisé, tu peux tenter ${fmt(next)} kg${unit} ; sinon garde ${fmt(top)} kg${unit}.${markedNote}`, basis, optional: next };
   }
-  if (allTop && enoughSets) {
-    if (noInc) return { kind: 'keep', load: top, text: `Plage atteinte, mais charge conservée : ${flags.noIncreaseReason}.`, basis };
-    if (effortOk) {
-      const nl = isAssist ? Math.max(0, top - inc) : top + inc;
-      return { kind: 'increase', load: nl, text: isAssist ? `${rMax} répétitions atteintes avec un effort maîtrisé : assistance réduite à ${fmt(nl)} kg (−${fmt(inc)} kg).` : `${rMax} répétitions atteintes sur toutes les séries avec un effort maîtrisé : +${fmt(inc)} kg.`, basis };
-    }
-    if (effortHard) return { kind: 'keep', load: top, text: `Plage atteinte mais effort déclaré difficile : garder ${fmt(top)} kg ${unitWord} une séance de plus.`.replace('  ', ' '), basis };
-    return { kind: 'keep', load: top, text: `Plage atteinte. Si l’effort te semble maîtrisé, tu peux tenter ${fmt(isAssist ? top - inc : top + inc)} kg ${unitWord} ; sinon garde ${fmt(top)} kg.`.replace('  ', ' '), basis, optional: isAssist ? top - inc : top + inc };
-  }
-  if (effortHard && atTop.some(s => (s.reps || 0) < rMin)) {
-    return { kind: 'keep', load: top, text: `Séance précédente difficile : garder ${fmt(top)} kg ${unitWord} ; une seule séance difficile ne suffit pas à baisser.`.replace('  ', ' '), basis };
-  }
-  const bestReps = Math.max(...atTop.map(s => s.reps || 0));
-  return { kind: 'keep', load: top, text: `Garder ${fmt(top)} kg ${unitWord} et viser ${Math.min(rMax, bestReps + 1)}–${rMax} répétitions avant d’augmenter.`.replace('  ', ' '), basis };
+  const short = rel.filter(s => (s.reps || 0) < rMax);
+  let text = `Garder ${fmt(top)} kg${unit} et viser ${rMax} répétitions sur toutes les séries avant de progresser. Analyse : ${analysed} ; ${describeSets(short, { assist: isAssist })} sous ${rMax}.`;
+  if (!uniform && !marked.length) text += ' Si une série plus légère était une montée en charge ou une série allégée, indique-le sur cette série pour qu’elle ne bloque pas la progression.';
+  if (effortHard && short.some(s => (s.reps || 0) < rMin)) text += ' Une seule séance difficile ne suffit pas à baisser la charge.';
+  return { kind: 'keep', load: top, text: text + markedNote, basis };
 }
 
-function itemMinutes(it) {
+// Durée d'un exercice : effort par série + repos entre les séries + transition (réglage, déplacement).
+export function itemMinutes(it) {
   const work = it.measure === 'time' ? (it.targetSeconds || 30) : 40;
-  return it.sets * (work + it.rest) / 60 + 1;
+  return (it.sets * work + Math.max(0, it.sets - 1) * it.rest) / 60 + 1.5;
 }
 
 export function lastCardio(sessions, cardioType) {
@@ -319,36 +349,48 @@ export function suggestSession({ profile, program, sessions, activities, today, 
   }
 
   // ----- Ajustement au temps disponible -----
+  // Estimation : échauffement (5 min + séries légères), séries (effort + repos), transitions, cardio.
   const budget = options.minutes || profile.durationMin || 60;
-  const warmMin = 5;
-  const total = () => warmMin + items.reduce((a, it) => a + itemMinutes(it), 0) + cardioMin;
+  const warmMin = () => 5 + (items.some(it => it.measure === 'load_reps') ? 2 : 0);
+  const total = () => warmMin() + items.reduce((a, it) => a + itemMinutes(it), 0) + cardioMin;
+  const over = () => Math.ceil(total()) > budget;
   const trimmed = [];
   const minCardio = options.focus === 'cardio' ? Math.min(cardioMin, 20) : (['perte_poids', 'endurance'].includes(profile.goal) ? Math.min(cardioMin, 15) : Math.min(cardioMin, 10));
   const dropPrio = (p) => {
-    while (total() > budget) {
+    while (over()) {
       const i = items.map(it => it.prio).lastIndexOf(p);
       if (i < 0) break;
       trimmed.push(items[i].name); items.splice(i, 1);
     }
   };
   const reduceSets = (p) => {
-    while (total() > budget && items.some(it => it.prio >= p && it.sets > 2)) {
+    while (over() && items.some(it => it.prio >= p && it.sets > 2)) {
       const it = items.filter(x => x.prio >= p && x.sets > 2).pop(); it.sets--;
       if (!trimmed.includes('séries réduites')) trimmed.push('séries réduites');
     }
   };
+  const shortenCardio = (floor) => {
+    if (over() && cardioMin > floor) {
+      cardioMin = Math.max(floor, Math.floor(cardioMin - (Math.ceil(total()) - budget)));
+      if (!trimmed.includes('cardio raccourci')) trimmed.push('cardio raccourci');
+    }
+  };
   dropPrio(3);
-  if (total() > budget && cardioMin > minCardio) { cardioMin = Math.max(minCardio, cardioMin - (total() - budget)); trimmed.push('cardio raccourci'); }
+  shortenCardio(minCardio);
   reduceSets(2);
   dropPrio(2);
   reduceSets(1);
-  if (total() > budget && cardioMin > 0) { cardioMin = Math.max(0, cardioMin - (total() - budget)); if (!trimmed.includes('cardio raccourci')) trimmed.push('cardio raccourci'); }
+  shortenCardio(0);
+  let overBudget = false;
   if (trimmed.length) reasons.push(`Tu disposes de ${budget} minutes : les exercices prioritaires sont conservés (${trimmed.join(', ')}).`);
-  else if (budget - total() > 15 && ['perte_poids', 'endurance', 'forme'].includes(profile.goal)) {
-    const extra = Math.min(15, Math.round(budget - total() - 5));
+  if (over()) {
+    overBudget = true;
+    reasons.push(`Les exercices essentiels demandent environ ${Math.ceil(total())} minutes, plus que tes ${budget} minutes : retire un exercice pendant la séance ou choisis plus de temps.`);
+  } else if (!trimmed.length && budget - Math.ceil(total()) > 15 && ['perte_poids', 'endurance', 'forme'].includes(profile.goal)) {
+    const extra = Math.min(15, Math.floor(budget - Math.ceil(total()) - 5));
     if (extra >= 5) { cardioMin += extra; reasons.push(`Il reste du temps sur tes ${budget} minutes : ${extra} minutes de cardio en plus.`); }
   }
-  cardioMin = Math.round(cardioMin);
+  cardioMin = Math.floor(cardioMin);
 
   // ----- Échauffement -----
   const warmup = ['5 minutes de cardio léger pour monter progressivement en température.'];
@@ -358,11 +400,11 @@ export function suggestSession({ profile, program, sessions, activities, today, 
     warmup.push(l ? `1 à 2 séries légères de ${first.name} (≈ ${fmt(Math.round(l * 0.5 / 2.5) * 2.5)} kg puis ${fmt(Math.round(l * 0.7 / 2.5) * 2.5)} kg), non comptées comme séries de travail.` : `1 à 2 séries légères de ${first.name}, non comptées comme séries de travail.`);
   }
 
-  const est = Math.round(total());
+  const est = Math.ceil(total());
   return {
     dayId: day.id, title: day.label, focus: day.focus, items, warmup,
     cardio: cardioMin > 0 ? { cardioType, label: CARDIO_TYPES[cardioType]?.label || cardioType, minutes: cardioMin, intensity: cardioIntensity, detail: cardioDetail, why: cardioWhy, runOption, optional: cardioMin <= 10 && cardioWhy.length > 1 } : null,
-    estMinutes: est, budget, reasons, conflicts, dataUsed, options,
+    estMinutes: est, budget, overBudget, reasons, conflicts, dataUsed, options,
   };
 }
 
@@ -379,4 +421,17 @@ export function replacementOptions(ex, profile, library, { usage = {}, zone = nu
     .filter(c => c.ex.id !== ex.id && (!zone || !exerciseConcernsZone(c.ex, zone)));
   list.sort((a, b) => (altIds.includes(b.ex.id) - altIds.includes(a.ex.id)) || b.score - a.score);
   return list.map(c => ({ ex: c.ex, note: (ex.alts.find(([id]) => id === c.ex.id) || [])[1] || '' }));
+}
+
+// Compatibilité d'un exercice avec le profil et la séance du jour, pour les remplacements et ajouts libres.
+// blocked : exclusion explicite (jamais contournée) ; reasons : conflits à confirmer explicitement.
+export function compatibility(ex, profile, { usage = {}, todayAttention = [], pattern = null } = {}) {
+  const adm = admissibility(ex, profile, { usage });
+  const blocked = (profile.excluded || []).includes(ex.id);
+  const reasons = adm.reasons.filter(r => r !== 'Exercice exclu dans ton profil');
+  for (const a of todayAttention) {
+    if (a.level === 'douleur' && exerciseConcernsZone(ex, a.zone)) reasons.push(`Sollicite la zone douloureuse aujourd’hui (${(ZONES[a.zone] || a.zone).toLowerCase()})`);
+  }
+  const sameRole = !pattern || ex.pattern === pattern;
+  return { blocked, reasons, sameRole, ok: !blocked && !reasons.length && sameRole };
 }

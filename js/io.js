@@ -17,7 +17,13 @@ export function buildExport(profileBundles, scope = 'complet') {
 
 // Migrations du format d'export : clé = format atteint.
 const FORMAT_MIGRATIONS = {
-  // 2(data) { ...; data.format = 2; return data; }
+  // Format 2 (v2.0.0) : ajout facultatif du compagnon dans chaque profil. Les profils sans
+  // compagnon restent valides : le compagnon sera proposé à l'utilisateur.
+  2(data) {
+    for (const b of data.profiles || []) if (b && b.profile && b.profile.companion === undefined) b.profile.companion = null;
+    data.format = 2;
+    return data;
+  },
 };
 
 function migrate(data) {

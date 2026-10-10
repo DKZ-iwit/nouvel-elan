@@ -13,7 +13,7 @@ const PRIO = { 1: 'Essentiel', 2: 'Important', 3: 'Facultatif' };
 export function completeProgramCard(p) {
   const missing = missingForProgram(p);
   const draft = { goal: p.goal, gymPerWeek: p.gymPerWeek, level: p.level, durationMin: p.durationMin };
-  const card = h('div', { class: 'card card-accent' },
+  const card = h('div', { class: 'card' },
     h('p', { class: 'card-title', text: 'Complète ton programme' }),
     h('p', { class: 'muted', text: `Il manque ${missing.length > 1 ? 'quelques informations' : 'une information'} pour proposer des séances adaptées.` }));
   for (const m of missing) {

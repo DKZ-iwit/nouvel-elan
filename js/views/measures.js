@@ -1,10 +1,11 @@
 import { h, uid, todayISO, fmtDate } from '../util.js';
-import { S, saveRecord, deleteRecord } from '../state.js';
+import { S, saveRecord, deleteRecord, companionSync } from '../state.js';
+import { rewardToast } from './companion.js';
 import { btn, iconBtn, field, textInput, numInput, dateInput, selectInput, pageHeader, section, sheet, confirmDialog, toast } from '../ui/components.js';
 import { MEASURE_TYPES, MEASURE_SOURCES, measureValue, estimateLabel } from './common.js';
 import { rerender } from '../router.js';
 
-function openMeasure(existing) {
+export function openMeasure(existing) {
   const m = existing ? { ...existing } : { id: uid(), date: todayISO(), type: 'poids', value: null, approx: false, source: null, note: '' };
   const sh = sheet({ title: existing ? 'Modifier la mesure' : 'Nouvelle mesure', content: h('div', { class: 'form' },
     field('Mesure', selectInput(Object.fromEntries(Object.entries(MEASURE_TYPES).map(([k, v]) => [k, `${v.label} (${v.unit})`])), m.type, { oninput: v => { m.type = v; } })),
@@ -18,7 +19,7 @@ function openMeasure(existing) {
     existing ? btn('Supprimer', async () => { if (await confirmDialog('Supprimer cette mesure ?', { danger: true, confirmLabel: 'Supprimer' })) { await deleteRecord('measurements', m.id); sh.close(); rerender(); } }, { kind: 'danger' }) : null,
     btn('Enregistrer', async () => {
       if (m.value === null || !m.date) { toast('Indique une date et une valeur.', { kind: 'error' }); return; }
-      await saveRecord('measurements', m); sh.close(); toast('Mesure enregistrée.'); rerender();
+      await saveRecord('measurements', m); sh.close(); toast('Mesure enregistrée.'); const res = await companionSync(); rewardToast(res); rerender();
     }, { kind: 'primary' })].filter(Boolean) });
 }
 
