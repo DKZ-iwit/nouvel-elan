@@ -1,4 +1,4 @@
-# Nouvel Élan
+# Nouvel Élan — version 2.0.0
 
 Application web progressive (PWA) de suivi sportif : séances en salle, activités hors salle, mesures, calories d'activité estimées, graphiques et suggestions de séances adaptées. Elle s'installe sur l'écran d'accueil d'un téléphone, fonctionne hors connexion et garde toutes les données **sur l'appareil** (IndexedDB). Aucun compte, aucun serveur applicatif, aucune clé d'API, aucune publicité, aucune mesure d'audience.
 
@@ -9,6 +9,33 @@ Application web progressive (PWA) de suivi sportif : séances en salle, activit�
 - **Transfert et sauvegarde** par export puis import d'un fichier JSON (Profil > Réglages et sauvegardes).
 - **Suggestions calculées localement**, par des règles explicites et affichées à l'utilisateur.
 - **Aucune donnée inventée** : ce qui est inconnu reste inconnu, n'est jamais converti en zéro et est signalé dans les totaux comme « partiel ».
+
+## Nouveautés de la version 2
+
+- **Nouvelle direction visuelle** : fond ivoire, texte anthracite, pétrole profond, accents corail et doré ; mode sombre chaleureux ; cartes différenciées selon leur rôle.
+- **Accueil centré sur l'action** : « Ta prochaine séance » avec « Commencer » et « Adapter », résumé compact de la semaine, compagnon, objectif personnel s'il est renseigné, actions rapides. Le bouton flottant a disparu ; un menu « Ajouter » est disponible dans l'historique.
+- **Séance plus fluide** : démarrage rapide (temps, énergie, point d'attention), exercice en cours au premier plan avec « Exercice 2 sur 7 », valeurs précédentes reprises en un geste, repos affiché dans la barre du haut, vue d'ensemble pour naviguer et réordonner, bilan de fin court avec retour facultatif.
+- **Progrès** : synthèse puis catégories (Régularité, Musculation, Cardio et activités, Mesures, Records), explications derrière le bouton ⓘ, records en cartes.
+- **Profil** en rubriques : objectifs, programme, confort et points d'attention, matériel et exercices, compagnon, mesures, réglages.
+- **Compagnons** : gorille, ours, chat, chien ou loutre, avec une garde-robe en trois collections.
+- **Corrections** :
+  - progression des charges examinant toutes les séries ;
+  - assistance jamais négative ;
+  - remplacements filtrés ;
+  - durée de séance respectant le temps disponible ;
+  - sauvegarde confirmée avant mise à jour.
+
+## Mettre à jour depuis la version 1 sans perdre de données
+
+1. Remplacer **tous** les fichiers du dépôt par ceux de l'archive (en conservant `.nojekyll`). La base IndexedDB garde le même nom : aucune donnée n'est stockée dans les fichiers.
+2. Sur chaque téléphone, ouvrir l'application avec une connexion. Le message « Nouvelle version disponible » apparaît ; toucher « Mettre à jour ».
+3. Avant d'activer la nouvelle version, l'application enregistre les modifications en attente et **attend la confirmation d'IndexedDB**. Si l'écriture échoue (espace saturé par exemple), la mise à jour est reportée et un message l'explique : rien n'est perdu.
+4. Une séance en cours est retrouvée telle quelle, y compris les séries non validées.
+5. Le compagnon n'est pas imposé : une carte « Choisis ton compagnon » apparaît sur l'accueil (bouton « Plus tard » disponible). À l'adoption, les points sont calculés à partir de l'historique existant et une seule synthèse de bienvenue s'affiche.
+
+Conseil : exporter une sauvegarde (Profil > Réglages et sauvegardes) avant la mise à jour reste une bonne précaution.
+
+Les exports de la version 1 (format 1) restent importables. Les nouveaux exports (format 2) contiennent aussi le compagnon de chaque profil. Ils ne sont pas lisibles par une application restée en version 1.
 
 ## Arborescence
 
@@ -35,6 +62,10 @@ nouvel-elan/
     ├── engine/suggest.js    Sélection et adaptation des séances
     ├── engine/calories.js   Estimation des calories d'activité
     ├── engine/stats.js      Volume, records, régularité, minutes actives
+    ├── engine/companion.js  Points, niveaux et déblocages du compagnon
+    ├── companion/art.js     Dessin SVG des cinq animaux (squelette commun)
+    ├── companion/wardrobe.js Garde-robe : 30 pièces en 3 collections + 6 décors
+    ├── companion/view.js    Animations, réactions, célébrations
     ├── ui/components.js     Composants d'interface
     ├── ui/charts.js         Graphiques SVG (sans bibliothèque externe)
     └── views/*.js           Écrans
@@ -55,7 +86,7 @@ Tous les chemins sont relatifs : l'application fonctionne dans un sous-répertoi
 ### Mettre à jour
 
 1. Remplacer les fichiers modifiés dans le dépôt.
-2. **Incrémenter `CACHE_VERSION`** dans `sw.js` (et, par cohérence, `version` dans `js/config.js`). Sans ce changement, les téléphones continuent d'utiliser l'ancienne version en cache.
+2. **Incrémenter `CACHE_VERSION`** dans `sw.js` (et, par cohérence, `version` dans `js/config.js` ; la version actuelle est `v2.0.0`). Sans ce changement, les téléphones continuent d'utiliser l'ancienne version en cache.
 3. À l'ouverture suivante, l'application affiche « Nouvelle version disponible ». Le bouton « Mettre à jour » enregistre d'abord la séance en cours, puis recharge. Les données IndexedDB ne sont jamais touchées par la mise à jour du cache. Une séance en cours est retrouvée telle quelle.
 
 ## Installer sur un téléphone
@@ -84,7 +115,7 @@ Le fichier est validé avant import (provenance, version de format, dates, valeu
 
 ## Sauvegardes et exports
 
-- **Export complet** (tous les profils) ou **export d'un profil** au format JSON versionné (`format: 1`).
+- **Export complet** (tous les profils) ou **export d'un profil** au format JSON versionné (`format: 2` ; les fichiers au format 1 restent acceptés).
 - **Exports CSV** des séances (une ligne par série), des activités et des mesures, avec séparateur `;` et décimales à virgule, lisibles dans un tableur français.
 - La date du dernier export est affichée et un rappel discret apparaît sur l'accueil après le délai choisi (14 jours par défaut).
 
@@ -130,7 +161,15 @@ Les choix restent stables d'une séance à l'autre pour rendre la progression me
 ### Adaptation de la séance du jour
 
 - **Journée** : la suivante dans l'ordre du programme. Une séance manquée n'est pas rattrapée ni cumulée. Après plus de deux semaines sans séance, les charges sont conservées.
-- **Temps disponible (30, 45, 60, 90 min)** : on retire d'abord les exercices facultatifs, puis on raccourcit le cardio jusqu'à un minimum, on réduit les séries des exercices secondaires, on retire les exercices importants, et enfin on réduit les séries des exercices principaux.
+- **Temps disponible (30, 45, 60, 90 min)** :
+  - **Ce que compte l'estimation** :
+    - 7 min d'échauffement, dont les séries légères ;
+    - pour chaque série : 40 s d'effort, ou la durée tenue ;
+    - les repos entre séries ;
+    - 1,5 min de transition par exercice ;
+    - le cardio.
+  - **Ajustement** : on retire d'abord les exercices facultatifs, puis on raccourcit le cardio jusqu'à un minimum, on réduit les séries des exercices secondaires, on retire les exercices importants, et enfin on réduit les séries des exercices principaux.
+  - **Garanties** : la durée affichée est arrondie à la minute supérieure, jamais inférieure. Si les exercices essentiels dépassent malgré tout le temps choisi, l'application le signale clairement.
 - **Forme** : la fatigue entraîne une série de moins, aucune augmentation de charge, un cardio léger et la suppression des exercices facultatifs.
 - **Point d'attention du jour** : il est demandé à chaque séance. Une gêne conserve la charge des mouvements concernés. Une douleur suspend la progression sur les mouvements qui sollicitent la zone, propose une alternative qui l'épargne quand elle existe et invite à demander un avis adapté. Sans réponse, une douleur indiquée dans le profil est prise en compte par prudence. Une absence de douleur passée n'est jamais considérée comme valable pour le jour même.
 - **Activités hors salle** : une sortie soutenue ou longue (course, randonnée, vélo) la veille ou le jour même réduit le volume des jambes. Les activités comptent dans l'objectif cardio de la semaine selon leur intensité. Une activité légère, ou une sortie à vélo électrique non soutenue, compte pour moitié.
@@ -138,16 +177,104 @@ Les choix restent stables d'une séance à l'autre pour rendre la progression me
 - **Retours** : deux séances de suite jugées trop difficiles retirent une série aux exercices secondaires. Deux séances jugées trop faciles ajoutent une série aux exercices principaux. Une seule séance ne change rien.
 - **Orientation** : « davantage de haut du corps, de bas du corps ou de cardio ».
 
+### Types de séries
+
+Le bouton à gauche de chaque série change son type :
+
+- **chiffre** : série de travail ;
+- **É** : échauffement, exclu de tous les calculs ;
+- **M** : montée en charge ;
+- **A** : série allégée.
+
+Les séries M et A comptent dans le volume. Elles sont décrites dans les conseils mais ne bloquent pas la progression.
+
+### Remplacement d'un exercice
+
+Le sélecteur de remplacement applique les mêmes filtres que le programme :
+
+- exclusions ;
+- exercices et mouvements déclarés gênants ;
+- matériel ;
+- niveau ;
+- douleur déclarée du jour ;
+- rôle de l'exercice dans la séance.
+
+Les alternatives compatibles du même rôle sont proposées en premier. Une exclusion n'est jamais contournée. Les autres conflits ne sont visibles qu'à la demande et exigent une confirmation explicite. Aucune charge n'est transférée d'un exercice à l'autre.
+
 ### Progression des charges (double progression)
 
+- **Toutes les séries de travail sont examinées**, y compris les plus légères : sans marquage explicite (« montée » ou « allégée »), une série plus légère sous la plage bloque la progression. Le conseil décrit exactement les séries analysées. Exemple : avec 2 × 12 à 50 kg puis 1 × 8 à 40 kg, la charge de 50 kg est conservée.
+- Si une charge manque ou si le nombre de séries est inconnu, la charge est conservée et l'application explique ce qui manque.
 - On garde la charge tant que le haut de la plage de répétitions n'est pas atteint sur toutes les séries de travail.
 - Une fois la plage atteinte avec un ressenti déclaré « Facile » ou « Maîtrisé », on ajoute le plus petit incrément disponible (réglable par exercice). Si l'effort n'est pas déclaré, l'augmentation est seulement proposée en option.
 - Deux séances comparables de suite sous la plage ou au maximum de l'effort entraînent une légère baisse proposée.
-- **Traction et dips assistés** : la progression consiste à réduire l'assistance.
+- **Traction et dips assistés** : la progression consiste à réduire l'assistance, sans jamais descendre sous 0 kg. Arrivé à 0 kg, l'application conseille d'ajouter des répétitions ou de passer à la traction libre.
 - **Exercices chronométrés** : on ajoute 5 s.
 - **Nouvel exercice** : l'application propose de déterminer une charge de départ confortable. Elle n'invente jamais de poids.
 - **Comparaisons** : elles se font sur le même exercice et la même variante ou machine. Aucune charge n'est transférée d'une machine ou d'une variante à une autre.
 - **Poids corporel** : une perte de poids ne déclenche jamais automatiquement plus de cardio ni plus de charge.
+
+## Compagnons
+
+### Choix et personnalisation
+
+- **Cinq animaux** : gorille, ours, chat, chien, loutre. Le choix est purement esthétique : tous suivent les mêmes règles, ont dix niveaux et cinq étapes d'évolution, et peuvent porter toutes les pièces.
+- **Personnalisation** : chaque profil a son propre compagnon, avec un nom, des couleurs de pelage et de museau, et une tenue.
+  - On peut changer d'animal à tout moment, sans perdre les points, le niveau ni les pièces débloquées.
+  - On peut masquer le compagnon de l'accueil et des séances, et couper ses animations. Celles-ci sont aussi coupées automatiquement si le téléphone demande de réduire les animations.
+- **Dessin** : les compagnons sont dessinés en SVG local, sans service distant. Les cinq animaux partagent un squelette commun (épaules, taille, hanches, bras, tête) aux proportions propres à chacun. Les vêtements sont découpés sur la silhouette de l'animal, ce qui les ajuste aux cinq morphologies sans masquer le visage.
+
+### Garde-robe
+
+- **Trois collections de style** — féminin, masculin et non genré — de dix pièces chacune, plus six décors. Elles comprennent :
+  - tenues complètes, hauts et bas ;
+  - vestes et sweats ;
+  - bandeaux et couvre-chefs ;
+  - lunettes, sacs et gourde ;
+  - tapis de yoga, kettlebell et vélo.
+- **Libre choix** : les styles concernent seulement la garde-robe. Ils ne déterminent ni le genre de l'utilisateur ni la progression, et aucun style n'est attribué automatiquement. Les filtres (Tout, Féminin, Masculin, Non genré) servent à parcourir : toutes les pièces se mélangent librement.
+- **Tenue complète** : elle remplace le haut et le bas portés, et inversement. Un message l'indique.
+- **Essayage** : toute pièce, même verrouillée, peut être essayée en aperçu. Une pièce débloquée s'équipe ou se retire librement.
+
+### Évolution
+
+- **Déblocages** : chaque niveau débloque une pièce dans chacune des trois collections. Les niveaux 2, 4, 6, 8 et 10 ajoutent aussi un décor.
+- **Étapes** : un passage d'étape a lieu tous les deux niveaux. Il apporte des expressions, des gestes de réaction (salut, bravo, victoire) et des détails de décor (plante, fanions, soleil, étincelles).
+- **Silhouette** : elle ne change jamais. Aucune réussite n'est associée à un corps plus mince ou plus musclé.
+
+### Points et niveaux
+
+| Action vérifiable | Points | Limite |
+|---|---|---|
+| Séance en salle terminée (au moins une série ou un cardio) | 10 | 2 par jour |
+| Activité hors salle d'au moins 10 minutes (dont vélo électrique) | 6 | 2 par jour |
+| Semaine active (au moins une séance ou activité) | 5 | 1 par semaine |
+| Objectif de séances de la semaine atteint (selon ton propre objectif) | 15 | 1 par semaine |
+| Objectif hors salle de la semaine atteint (si renseigné) | 10 | 1 par semaine |
+| Étape de régularité : 5e, 10e, 25e, 50e, 100e, 200e séance ou activité | 10 | une fois chacune |
+| Palier de poids personnel atteint (après avoir été au-dessus) | 15 | une fois par palier |
+
+Seuils des niveaux 1 à 10 : 0, 30, 70, 120, 180, 250, 330, 420, 520 et 630 points.
+
+### Ce qui ne rapporte pas de points
+
+- **Effort et résultats** : la durée, les charges, les calories et la perte de poids ne donnent pas de points supplémentaires.
+- **Repos** : une semaine sans séance ne fait jamais reculer le compagnon.
+- **Bien-être** : aucun message ne pousse à s'entraîner malgré une douleur ou une fatigue.
+- **Santé** : le compagnon est un jeu, distinct de la progression sportive mesurée dans l'onglet Progrès. Ce n'est pas une évaluation de santé.
+
+### Fiabilité des récompenses
+
+- **Calcul** : les points sont recalculés à partir des enregistrements, avec un identifiant par événement (`seance:<id>`, `activite:<id>`, `semaine:<lundi>:…`, `cumul:<n>`, `palier:<id>`).
+  - Un import répété, un doublon ou une modification ne rapportent jamais deux fois.
+  - Une séance seulement commencée ne rapporte rien.
+  - Une suppression ajuste les points à la baisse.
+- **Pièces conservées** : les pièces déjà débloquées restent acquises, même si une correction d'historique fait redescendre le niveau. Les points calculés et les éléments cosmétiques sont stockés séparément.
+- **Célébrations** :
+  - un passage de niveau n'est célébré qu'une fois, au moment de l'action ;
+  - l'ouverture de l'application, un import ou une correction ne déclenchent aucune célébration ;
+  - à l'adoption, l'historique existant est pris en compte sans célébrer chaque ancienne séance.
+- **Données exportées** : l'animal, le nom, les couleurs, la tenue, les pièces débloquées, le niveau, les points, les événements déjà récompensés et le dernier niveau célébré. Les préférences d'affichage et d'animation sont incluses.
 
 ## Calories d'activité
 
@@ -209,11 +336,11 @@ Précisions sur certaines activités :
 | Minutes actives | Sans chevauchement lorsque les heures sont connues. Une séance sans durée connue ne compte que pour ses segments cardio chronométrés, et la semaine est marquée partielle. |
 | Mesures de montre ou de balance | Présentées comme des estimations déclarées. Les valeurs approximatives apparaissent en points creux. Les paliers visés sont des lignes distinctes des poids enregistrés. |
 
-## Modèle de données (format d'export 1)
+## Modèle de données (format d’export 2)
 
 ```json
 {
-  "app": "nouvel-elan", "format": 1, "appVersion": "1.0.0", "exportedAt": "…", "scope": "complet | profil",
+  "app": "nouvel-elan", "format": 2, "appVersion": "2.0.0", "exportedAt": "…", "scope": "complet | profil",
   "profiles": [{
     "profile": { "id": "…", "name": "…", "goal": "perte_poids", "secondaryGoals": [], "weightTargets": [],
                  "level": null, "gymPerWeek": null, "durationMin": null, "equipment": [], "attention": [], "…": "…" },
@@ -240,4 +367,6 @@ Les observations incomplètes sont acceptées : nombre de séries inconnu (`sets
 - Les suggestions sont des règles générales d'entraînement. Elles ne constituent pas un avis médical et ne présentent aucun exercice comme médicalement sûr. Les consignes d'un professionnel saisies dans le profil sont affichées telles quelles mais pas interprétées : pour écarter un exercice, il faut l'indiquer comme gênant ou l'exclure.
 - Les profils d'un même appareil ne sont pas protégés par un mot de passe.
 - Sur iPhone, les vibrations de fin de repos ne sont pas prises en charge par Safari.
+- Les règles de régularité utilisent les objectifs actuels du profil : modifier le nombre de séances visé recalcule les bonus de semaine passés. Les pièces déjà débloquées restent acquises.
+- La police arrondie des titres utilise celle du système quand elle existe (iPhone). Sinon, la police habituelle du téléphone s'applique.
 - L'apparence du sélecteur de date dépend du téléphone et de sa langue.
